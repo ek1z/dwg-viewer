@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, ReactElement } from 'react';
 import { parseDxf } from '@dwg-viewer/dxf-core';
+import { isDwgFile, parseDwg } from '@dwg-viewer/dwg-core';
 import { ViewerEngine } from '@dwg-viewer/viewer-engine';
 import { useViewerStore } from './store.js';
 import { LayerPanel } from './LayerPanel.js';
@@ -117,8 +118,10 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
       if (!engine) return;
       beginLoad(file.name);
       try {
-        const text = await file.text();
-        const scene = parseDxf(text);
+        // DWG is converted to DXF in the browser; both end up as the same Scene.
+        const scene = isDwgFile(file.name)
+          ? await parseDwg(await file.arrayBuffer())
+          : parseDxf(await file.text());
         engine.loadScene(scene);
         setScene(scene);
       } catch (err) {
@@ -162,7 +165,7 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
           <canvas ref={canvasRef} className="dxf-viewer__canvas" />
           <MeasureOverlay engineRef={engineRef} frame={frame} />
           {status === 'idle' && (
-            <div className="dxf-viewer__hint">Open or drop a .dxf file to begin</div>
+            <div className="dxf-viewer__hint">Open or drop a .dxf or .dwg file to begin</div>
           )}
           {status === 'loading' && <div className="dxf-viewer__hint">Parsing…</div>}
           {status === 'ready' && tool && (
