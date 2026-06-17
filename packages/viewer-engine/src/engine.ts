@@ -4,6 +4,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { apply, type Scene, type SceneEntity, type Vec2 } from '@dwg-viewer/dxf-core';
+import { SnapBuilder, type SnapIndex, type SnapResult } from '@dwg-viewer/measure';
 import { tessellateArc, tessellateEllipse, tessellatePolyline, tessellateSpline } from './tessellate.js';
 
 export interface ViewerOptions {
@@ -45,6 +46,13 @@ export class ViewerEngine {
   private center: Vec2 = { x: 0, y: 0 };
   /** CSS pixels per world unit. */
   private scale = 1;
+
+  /** Snap geometry for the current scene (true world f64); null until a scene loads. */
+  private snapIndex: SnapIndex | null = null;
+  /** Listeners notified whenever the camera (pan/zoom/fit/resize) changes. */
+  private readonly changeListeners = new Set<() => void>();
+  /** When false, the left mouse button is reserved for tools (e.g. measuring) instead of panning. */
+  private panLeftButton = true;
 
   private renderScheduled = false;
   private readonly disposers: Array<() => void> = [];
@@ -97,9 +105,12 @@ export class ViewerEngine {
       return bk;
     };
 
+    const snap = new SnapBuilder();
     for (const e of parsed.entities) {
       this.appendEntity(e, bucketFor(e.layer));
+      this.addEntitySnap(e, snap);
     }
+    this.snapIndex = snap.build();
 
     for (const [layerName, bk] of buckets) {
       const group = new THREE.Group();
@@ -240,6 +251,112 @@ export class ViewerEngine {
     }
   }
 
+  /**
+   * Contribute an entity's snap geometry to the builder, in true world float64
+   * coordinates (no rebasing offset) so measurements read exact values. Stored
+   * snaps are the meaningful object points (endpoints, midpoints, centers);
+   * tessellated segments back nearest-point and intersection snaps.
+   */
+  private addEntitySnap(e: SceneEntity, snap: SnapBuilder): void {
+    const tw = (p: Vec2): Vec2 => apply(e.transform, p);
+    const addSegments = (worldPts: Vec2[]): void => {
+      for (let i = 0; i < worldPts.length - 1; i++) {
+        const a = worldPts[i]!;
+        const b = worldPts[i + 1]!;
+        snap.addSegment(a.x, a.y, b.x, b.y);
+      }
+    };
+
+    switch (e.type) {
+      case 'polyline': {
+        const verts = e.vertices.map((v) => tw(v));
+        for (const v of verts) snap.addPoint(v.x, v.y, 'endpoint');
+        const spanCount = e.closed ? verts.length : verts.length - 1;
+        for (let i = 0; i < spanCount; i++) {
+          const a = verts[i]!;
+          const b = verts[(i + 1) % verts.length]!;
+          snap.addPoint((a.x + b.x) / 2, (a.y + b.y) / 2, 'midpoint');
+        }
+        addSegments(tessellatePolyline(e.vertices, e.closed).map(tw));
+        break;
+      }
+      case 'arc': {
+        const c = tw(e.center);
+        snap.addPoint(c.x, c.y, 'center');
+        let span = e.endAngle - e.startAngle;
+        if (span <= 0) span += Math.PI * 2;
+        const isFull = Math.abs(span - Math.PI * 2) < 1e-6;
+        const at = (angle: number): Vec2 =>
+          tw({ x: e.center.x + e.radius * Math.cos(angle), y: e.center.y + e.radius * Math.sin(angle) });
+        if (!isFull) {
+          const start = at(e.startAngle);
+          const end = at(e.startAngle + span);
+          snap.addPoint(start.x, start.y, 'endpoint');
+          snap.addPoint(end.x, end.y, 'endpoint');
+        }
+        const mid = at(e.startAngle + span / 2);
+        snap.addPoint(mid.x, mid.y, 'midpoint');
+        addSegments(
+          tessellateArc(e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle).map(tw),
+        );
+        break;
+      }
+      case 'ellipse': {
+        const c = tw(e.center);
+        snap.addPoint(c.x, c.y, 'center');
+        const pts = tessellateEllipse(
+          e.center.x,
+          e.center.y,
+          e.majorAxis.x,
+          e.majorAxis.y,
+          e.axisRatio,
+          e.startAngle,
+          e.endAngle,
+        ).map(tw);
+        if (pts.length) {
+          snap.addPoint(pts[0]!.x, pts[0]!.y, 'endpoint');
+          snap.addPoint(pts[pts.length - 1]!.x, pts[pts.length - 1]!.y, 'endpoint');
+        }
+        addSegments(pts);
+        break;
+      }
+      case 'spline': {
+        const pts = tessellateSpline(
+          e.degree,
+          e.controlPoints,
+          e.knots,
+          e.closed,
+          e.fitPoints,
+          e.weights,
+        ).map(tw);
+        if (pts.length) {
+          snap.addPoint(pts[0]!.x, pts[0]!.y, 'endpoint');
+          snap.addPoint(pts[pts.length - 1]!.x, pts[pts.length - 1]!.y, 'endpoint');
+        }
+        addSegments(pts);
+        break;
+      }
+      case 'solid': {
+        const ring = e.points.map(tw);
+        for (const v of ring) snap.addPoint(v.x, v.y, 'endpoint');
+        for (let i = 0; i < ring.length; i++) {
+          const a = ring[i]!;
+          const b = ring[(i + 1) % ring.length]!;
+          snap.addPoint((a.x + b.x) / 2, (a.y + b.y) / 2, 'midpoint');
+          snap.addSegment(a.x, a.y, b.x, b.y);
+        }
+        break;
+      }
+      case 'point': {
+        const p = tw(e.position);
+        snap.addPoint(p.x, p.y, 'endpoint');
+        break;
+      }
+      case 'text':
+        break;
+    }
+  }
+
   setLayerVisible(name: string, visible: boolean): void {
     const layer = this.layers.get(name);
     if (layer) {
@@ -254,6 +371,47 @@ export class ViewerEngine {
     const x = this.center.x + (px - rect.width / 2) / this.scale;
     const y = this.center.y - (py - rect.height / 2) / this.scale;
     return { x: x + this.offset.x, y: y + this.offset.y };
+  }
+
+  /** CSS-pixel screen coordinate for a true world-space point (inverse of `screenToWorld`). */
+  worldToScreen(world: Vec2): Vec2 {
+    const rect = this.canvas.getBoundingClientRect();
+    const localX = world.x - this.offset.x - this.center.x;
+    const localY = world.y - this.offset.y - this.center.y;
+    return {
+      x: rect.width / 2 + localX * this.scale,
+      y: rect.height / 2 - localY * this.scale,
+    };
+  }
+
+  /** Current zoom in CSS pixels per world unit (for converting pixel tolerances). */
+  get pixelsPerUnit(): number {
+    return this.scale;
+  }
+
+  /**
+   * Best object snap near a true world-space point, or null. `pixelRadius` is
+   * the screen-space tolerance; it is converted to world units via the current
+   * zoom so the catch radius stays constant on screen. Runs on the float64 snap
+   * geometry (plan §5).
+   */
+  querySnap(world: Vec2, pixelRadius: number): SnapResult | null {
+    if (!this.snapIndex || this.snapIndex.isEmpty) return null;
+    return this.snapIndex.query(world, pixelRadius / this.scale);
+  }
+
+  /** Subscribe to camera changes (pan/zoom/fit/resize). Returns an unsubscribe fn. */
+  onChange(cb: () => void): () => void {
+    this.changeListeners.add(cb);
+    return () => this.changeListeners.delete(cb);
+  }
+
+  /**
+   * When false, the left mouse button no longer pans — it is left free for an
+   * active tool (e.g. measuring) to handle clicks. Middle-button drag still pans.
+   */
+  setPanWithLeftButton(enabled: boolean): void {
+    this.panLeftButton = enabled;
   }
 
   fitToView(scene?: Scene): void {
@@ -300,6 +458,7 @@ export class ViewerEngine {
     this.camera.position.x = this.center.x;
     this.camera.position.y = this.center.y;
     this.camera.updateProjectionMatrix();
+    for (const cb of this.changeListeners) cb();
   }
 
   private updateMaterialResolution(): void {
@@ -314,6 +473,8 @@ export class ViewerEngine {
     let lastY = 0;
 
     const onPointerDown = (ev: PointerEvent) => {
+      // Left button pans only when not reserved for a tool; middle always pans.
+      if (ev.button === 0 && !this.panLeftButton) return;
       if (ev.button !== 0 && ev.button !== 1) return;
       dragging = true;
       lastX = ev.clientX;

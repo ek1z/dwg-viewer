@@ -2,7 +2,7 @@
   "name": "@dwg-viewer/measure",
   "version": "0.0.0",
   "type": "module",
-  "comment": "Placeholder for Phase 2 measurement tools (snapping, distance/area/angle). Internal source-consumed package.",
+  "comment": "Phase 2 measurement tools (snapping, distance/area/angle). Pure TS, framework-agnostic. Internal source-consumed package.",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -13,12 +13,13 @@
   "types": "./src/index.ts",
   "files": ["dist", "src"],
   "scripts": {
-    "build": "echo 'measure: placeholder, no build yet'",
+    "build": "echo 'measure is consumed from source; no standalone build'",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@dwg-viewer/dxf-core": "workspace:*"
+    "@dwg-viewer/dxf-core": "workspace:*",
+    "flatbush": "^4.6.2"
   },
   "devDependencies": {
     "typescript": "^5.9.2",

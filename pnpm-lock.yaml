@@ -64,6 +64,9 @@ importers:
       '@dwg-viewer/dxf-core':
         specifier: workspace:*
         version: link:../dxf-core
+      flatbush:
+        specifier: ^4.6.2
+        version: 4.6.2
     devDependencies:
       typescript:
         specifier: ^5.9.2
@@ -77,6 +80,9 @@ importers:
       '@dwg-viewer/dxf-core':
         specifier: workspace:*
         version: link:../dxf-core
+      '@dwg-viewer/measure':
+        specifier: workspace:*
+        version: link:../measure
       three:
         specifier: ^0.184.0
         version: 0.184.0
@@ -99,6 +105,9 @@ importers:
       '@dwg-viewer/dxf-core':
         specifier: workspace:*
         version: link:../dxf-core
+      '@dwg-viewer/measure':
+        specifier: workspace:*
+        version: link:../measure
       '@dwg-viewer/viewer-engine':
         specifier: workspace:*
         version: link:../viewer-engine
@@ -1383,6 +1392,12 @@ packages:
 
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
+  flatbush@4.6.2:
+    resolution: {integrity: sha512-nNT7MFJ58Q4IAm3aYsEg+zgZGpdRcmR1i4U+aa8c+r91jmYZg7FTQwNnIMC0FyBqVZTbClKdAnrJkKkfp1BOvw==}
+
+  flatqueue@3.1.0:
+    resolution: {integrity: sha512-Ia4qIYrrsEqIRx3c3XhkT+QDLQuUV5ovsr6ah1rIgKT5wclhoGK3lAMS1bWRAWxlx7wtlTBpV7QXB5d9fOSRxA==}
 
   flattie@1.1.1:
     resolution: {integrity: sha512-9UbaD6XdAL97+k/n+N7JwX46K/M6Zc6KcFYskrYL8wbBV/Uyk0CTAMY0VT+qiK5PM7AIc9aTWYtq65U7T+aCNQ==}
@@ -3539,6 +3554,12 @@ snapshots:
       picomatch: 4.0.4
 
   fflate@0.8.3: {}
+
+  flatbush@4.6.2:
+    dependencies:
+      flatqueue: 3.1.0
+
+  flatqueue@3.1.0: {}
 
   flattie@1.1.1: {}
 

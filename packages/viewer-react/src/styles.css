@@ -141,3 +141,94 @@
   font-size: 14px;
   pointer-events: none;
 }
+
+.dxf-toolbar__btn--active {
+  background: #7aa7ff;
+  border-color: #7aa7ff;
+  color: #14233f;
+}
+.dxf-toolbar__btn--active:hover:not(:disabled) {
+  background: #8fb4ff;
+}
+.dxf-toolbar__divider {
+  width: 1px;
+  align-self: stretch;
+  background: #3a3a3a;
+  margin: 0 2px;
+}
+.dxf-toolbar__measure {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #ffd24a;
+  font-weight: 600;
+}
+
+/* Measurement annotation overlay (SVG above the canvas). */
+.dxf-measure {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.dxf-measure__line {
+  stroke: #ffd24a;
+  stroke-width: 1.5;
+  fill: none;
+}
+.dxf-measure__line--preview {
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+}
+.dxf-measure__fill {
+  fill: rgba(122, 167, 255, 0.16);
+  stroke: none;
+}
+.dxf-measure__vertex {
+  fill: #1e1e1e;
+  stroke: #ffd24a;
+  stroke-width: 1.5;
+}
+.dxf-measure__label {
+  fill: #ffe89a;
+  font-size: 12px;
+  font-family: system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: #1e1e1e;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.dxf-measure__snap {
+  fill: none;
+  stroke: #6effb0;
+  stroke-width: 1.5;
+}
+.dxf-measure__snap-label {
+  fill: #6effb0;
+  font-size: 11px;
+  font-family: system-ui, sans-serif;
+  paint-order: stroke;
+  stroke: #1e1e1e;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.dxf-viewer__stage--measuring {
+  cursor: crosshair;
+}
+.dxf-viewer__measure-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  background: rgba(20, 20, 20, 0.85);
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 5px 10px;
+  color: #c8c8c8;
+  font-size: 12px;
+  pointer-events: none;
+  white-space: nowrap;
+}
