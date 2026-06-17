@@ -21,12 +21,19 @@ import { SnapBuilder, type SnapIndex, type SnapResult } from '@dwg-viewer/measur
 import { Text as TroikaText } from 'troika-three-text';
 import { tessellateArc, tessellateEllipse, tessellatePolyline, tessellateSpline } from './tessellate.js';
 import { anchorX, anchorY, CAP_HEIGHT_RATIO, decodeText } from './text.js';
+import { expandDashed } from './dash.js';
 
 export interface ViewerOptions {
   /** Background color (hex). Default dark CAD grey. */
   background?: number;
-  /** Constant on-screen line width in CSS pixels. */
+  /** Constant on-screen line width in CSS pixels (the default / thin-line width). */
   lineWidth?: number;
+  /**
+   * On-screen pixels per millimetre of lineweight, when lineweight display is on.
+   * Lineweights render at a fixed screen scale independent of zoom (like
+   * AutoCAD's default LWDISPLAY), floored at `lineWidth` so hairlines stay crisp.
+   */
+  lineweightScale?: number;
   /**
    * URL of a TrueType/OpenType/WOFF font for rendering TEXT/MTEXT. SHX fonts
    * aren't embedded in DXF, so glyphs are substituted (plan §3). When omitted,
@@ -40,8 +47,17 @@ interface LayerObjects {
   group: THREE.Group;
 }
 
-/** Per-layer geometry accumulator while batching a scene or a block definition. */
+/**
+ * Geometry accumulator while batching a scene or block definition. One bucket
+ * per (layer, lineweight) pair: segments of different on-screen widths need
+ * separate `LineMaterial`s (linewidth is a material uniform, not per-vertex),
+ * but tri/point geometry only varies by layer so it rides along in the first
+ * width-bucket for that layer.
+ */
 interface Bucket {
+  layer: string;
+  /** On-screen line width (CSS px) for this bucket's segments when lineweights are shown. */
+  width: number;
   segPositions: number[];
   segColors: number[];
   triPositions: number[];
@@ -50,8 +66,10 @@ interface Bucket {
   pointColors: number[];
 }
 
-function emptyBucket(): Bucket {
+function emptyBucket(layer: string, width: number): Bucket {
   return {
+    layer,
+    width,
     segPositions: [],
     segColors: [],
     triPositions: [],
@@ -75,6 +93,8 @@ interface BlockLayerParts {
 
 const DEFAULT_BG = 0x1e1e1e;
 const DEFAULT_LINE_WIDTH = 1.4;
+/** Default on-screen pixels per mm of lineweight (so 0.25 mm ≈ the thin default). */
+const DEFAULT_LINEWEIGHT_SCALE = 5.6;
 const ZERO: Vec2 = { x: 0, y: 0 };
 
 /** Give an object a fixed local matrix (no per-frame recompute) and return it. */
@@ -98,9 +118,13 @@ export class ViewerEngine {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
   private readonly lineWidth: number;
+  private readonly lineweightScale: number;
+  /** When false, every line draws at `lineWidth` regardless of its lineweight (AutoCAD LWDISPLAY off). */
+  private lineweightDisplay = true;
 
   private readonly layers = new Map<string, LayerObjects>();
-  private readonly materials: LineMaterial[] = [];
+  /** Line materials with the on-screen width they take when lineweight display is on. */
+  private readonly lineMaterials: Array<{ material: LineMaterial; width: number }> = [];
   /** Every geometry/material created for the current scene, disposed on clear. */
   private readonly sceneDisposables: Array<{ dispose(): void }> = [];
   /** Troika text meshes, retained so they can be disposed on scene clear. */
@@ -132,6 +156,7 @@ export class ViewerEngine {
     options: ViewerOptions = {},
   ) {
     this.lineWidth = options.lineWidth ?? DEFAULT_LINE_WIDTH;
+    this.lineweightScale = options.lineweightScale ?? DEFAULT_LINEWEIGHT_SCALE;
     this.fontUrl = options.fontUrl;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setClearColor(options.background ?? DEFAULT_BG, 1);
@@ -151,15 +176,10 @@ export class ViewerEngine {
 
     const layerColor = new Map(parsed.layers.map((l) => [l.name, l]));
 
-    const buckets = new Map<string, Bucket>();
-    const bucketFor = (layer: string): Bucket => {
-      let bk = buckets.get(layer);
-      if (!bk) buckets.set(layer, (bk = emptyBucket()));
-      return bk;
-    };
+    const buckets = this.newBucketSet();
 
     // Repeated blocks are preserved as instances (shared geometry, one draw per
-    // placement); everything else is flattened into the per-layer merge below.
+    // placement); everything else is flattened into the per-(layer,width) merge below.
     const snap = new SnapBuilder();
     const instances: InstanceEntity[] = [];
     for (const e of parsed.entities) {
@@ -168,15 +188,15 @@ export class ViewerEngine {
         this.addInstanceSnap(e, parsed, snap);
         continue;
       }
-      this.appendEntity(e, bucketFor(e.layer), this.offset);
+      this.appendEntity(e, buckets.bucketFor(e.layer, this.lineweightToPx(e)), this.offset);
       this.addEntitySnap(e, snap);
     }
     this.snapIndex = snap.build();
 
-    // One merged geometry per layer for all flattened (non-instanced) entities.
+    // One merged geometry per (layer, width) for all flattened (non-instanced) entities.
     const identity = new THREE.Matrix4();
-    for (const [layerName, bk] of buckets) {
-      const group = this.layerGroup(layerName, layerColor);
+    for (const bk of buckets.all()) {
+      const group = this.layerGroup(bk.layer, layerColor);
       for (const make of this.bucketToParts(bk)) group.add(make(identity));
     }
 
@@ -204,6 +224,44 @@ export class ViewerEngine {
     this.requestRender();
   }
 
+  /** A set of (layer, width) buckets sharing one keyed map. */
+  private newBucketSet(): {
+    bucketFor: (layer: string, width: number) => Bucket;
+    all: () => Iterable<Bucket>;
+  } {
+    const map = new Map<string, Bucket>();
+    return {
+      bucketFor: (layer: string, width: number): Bucket => {
+        const key = `${layer}|${width}`;
+        let bk = map.get(key);
+        if (!bk) map.set(key, (bk = emptyBucket(layer, width)));
+        return bk;
+      },
+      all: () => map.values(),
+    };
+  }
+
+  /**
+   * On-screen width (CSS px) for an entity's lineweight. ByLayer/unset/zero
+   * (mm ≤ 0) draws at the thin default; real lineweights map mm→px at a fixed
+   * screen scale, floored so hairlines stay crisp.
+   */
+  private lineweightToPx(e: SceneEntity): number {
+    const mm = 'lineweight' in e ? e.lineweight : -1;
+    if (mm <= 0) return this.lineWidth;
+    return Math.max(this.lineWidth, mm * this.lineweightScale);
+  }
+
+  /** Resolved dash pattern (in world units, pre-scaled) for an entity, or null when solid. */
+  private dashPattern(e: SceneEntity): { pattern: number[]; scale: number } | null {
+    if (!('linetype' in e) || !this.currentScene) return null;
+    const lt = this.currentScene.linetypes[e.linetype];
+    if (!lt || !lt.pattern.length || lt.patternLength <= 0) return null;
+    const scale = this.currentScene.ltScale * (e.lineTypeScale || 1);
+    if (scale <= 0) return null;
+    return { pattern: lt.pattern, scale };
+  }
+
   /**
    * Turn a batched bucket into shareable GPU geometry, returning factories that
    * spawn a scene object per use. The merged scene path calls each factory once
@@ -218,15 +276,15 @@ export class ViewerEngine {
       geom.setPositions(new Float32Array(bk.segPositions));
       geom.setColors(new Float32Array(bk.segColors));
       const mat = new LineMaterial({
-        linewidth: this.lineWidth,
+        linewidth: this.lineweightDisplay ? bk.width : this.lineWidth,
         vertexColors: true,
         worldUnits: false,
         dashed: false,
       });
-      this.materials.push(mat);
+      this.lineMaterials.push({ material: mat, width: bk.width });
       this.sceneDisposables.push(geom);
-      // Compute line distances and bounds once on the shared geometry.
-      new LineSegments2(geom, mat).computeLineDistances();
+      // Bounds once on the shared geometry (dashing is baked into the geometry on
+      // the CPU, so no per-material line-distance pass is needed).
       geom.computeBoundingSphere();
       geom.computeBoundingBox();
       parts.push((matrix) => placed(new LineSegments2(geom, mat), matrix));
@@ -259,18 +317,16 @@ export class ViewerEngine {
 
   /** Tessellate a block definition once into shareable per-layer geometry. */
   private buildBlockParts(def: BlockDef): BlockLayerParts[] {
-    const buckets = new Map<string, Bucket>();
+    const buckets = this.newBucketSet();
     for (const e of def.entities) {
       // Definitions hold only flattened geometry (no nested instances, no text).
       if (e.type === 'instance' || e.type === 'text') continue;
       // Block-local coordinates (no rebasing offset — the placement matrix carries it).
-      let bk = buckets.get(e.layer);
-      if (!bk) buckets.set(e.layer, (bk = emptyBucket()));
-      this.appendEntity(e, bk, ZERO);
+      this.appendEntity(e, buckets.bucketFor(e.layer, this.lineweightToPx(e)), ZERO);
     }
     const parts: BlockLayerParts[] = [];
-    for (const [layer, bk] of buckets) {
-      for (const build of this.bucketToParts(bk)) parts.push({ layer, build });
+    for (const bk of buckets.all()) {
+      for (const build of this.bucketToParts(bk)) parts.push({ layer: bk.layer, build });
     }
     return parts;
   }
@@ -299,15 +355,27 @@ export class ViewerEngine {
       return { x: w.x - offset.x, y: w.y - offset.y };
     };
 
-    const pushPolyline = (pts: Vec2[], closed: boolean) => {
-      if (pts.length < 2) return;
-      const w = pts.map(toWorld);
+    const dash = this.dashPattern(e);
+
+    const pushRun = (w: Vec2[], closed: boolean) => {
       const n = closed ? w.length : w.length - 1;
       for (let i = 0; i < n; i++) {
         const a = w[i]!;
         const c = w[(i + 1) % w.length]!;
         bk.segPositions.push(a.x, a.y, 0, c.x, c.y, 0);
         bk.segColors.push(r, g, bl, r, g, bl);
+      }
+    };
+
+    const pushPolyline = (pts: Vec2[], closed: boolean) => {
+      if (pts.length < 2) return;
+      const w = pts.map(toWorld);
+      if (dash) {
+        // Expand to dash sub-polylines (world units); each run is already a
+        // ready-to-stroke open polyline, so the seam is baked in — push as open.
+        for (const run of expandDashed(w, dash.pattern, dash.scale, closed)) pushRun(run, false);
+      } else {
+        pushRun(w, closed);
       }
     };
 
@@ -643,7 +711,21 @@ export class ViewerEngine {
   private updateMaterialResolution(): void {
     const w = this.renderer.domElement.width;
     const h = this.renderer.domElement.height;
-    for (const m of this.materials) m.resolution.set(w, h);
+    for (const { material } of this.lineMaterials) material.resolution.set(w, h);
+  }
+
+  /**
+   * Toggle lineweight display (AutoCAD's LWDISPLAY). When off, every line draws
+   * at the thin default width; when on, each line uses its mm-derived width.
+   * Flips material uniforms in place — no geometry rebuild.
+   */
+  setLineweightDisplay(enabled: boolean): void {
+    if (enabled === this.lineweightDisplay) return;
+    this.lineweightDisplay = enabled;
+    for (const { material, width } of this.lineMaterials) {
+      material.linewidth = enabled ? width : this.lineWidth;
+    }
+    this.requestRender();
   }
 
   private attachControls(): void {
@@ -720,8 +802,8 @@ export class ViewerEngine {
     this.textObjects.length = 0;
     for (const { group } of this.layers.values()) this.scene.remove(group);
     this.layers.clear();
-    for (const m of this.materials) m.dispose();
-    this.materials.length = 0;
+    for (const { material } of this.lineMaterials) material.dispose();
+    this.lineMaterials.length = 0;
     // Geometries/materials are shared across instanced placements, so dispose them
     // once from the tracked list rather than by traversing (which double-frees).
     for (const d of this.sceneDisposables) d.dispose();

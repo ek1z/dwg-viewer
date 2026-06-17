@@ -162,11 +162,39 @@ unit-tested); styling runs are dropped — content fidelity, not style fidelity.
 Substitution means it won't be pixel-perfect against the original SHX, as the
 plan calls out.
 
+### Lineweights & dashed linetypes (plan §3)
+
+Per-entity **lineweights** render in *display mode* (like AutoCAD's `LWDISPLAY`):
+millimetre widths map to on-screen pixels at a fixed scale, **independent of
+zoom**, so a thick line stays visibly thick without growing as you zoom. Because
+`LineMaterial`'s width is a per-material uniform, segments are batched per
+`(layer, width)` rather than per layer; DXF lineweights are a small fixed enum,
+so the extra buckets are bounded. A toolbar **Lineweights** toggle flips display
+on/off live (`setLineweightDisplay` swaps material uniforms — no rebuild).
+
+**Dashed linetypes** are expanded on the CPU: each tessellated polyline is walked
+and broken into dash sub-segments following the LTYPE pattern (group 49: + dash,
+− gap, 0 dot), scaled by the global `$LTSCALE` and the entity's linetype scale.
+This deliberately departs from the plan's "dashing via `LineMaterial`" — that only
+supports a single dash/gap pair, so multi-element patterns (CENTER, DASHDOT,
+PHANTOM) would lose fidelity. CPU expansion produces ordinary segments that reuse
+the existing fat-line batching and block instancing untouched, and the dashes are
+world-anchored (they scale correctly with zoom). A per-entity blow-up guard falls
+back to a solid line when a pattern would emit excessive dashes.
+
+Two parser gaps shaped this work. `dxf-parser` carries the LTYPE pattern table
+but **drops each layer's default linetype (group 6) and lineweight (group 370)** —
+which is exactly where "ByLayer" entities (the common case) keep that info. A
+focused supplemental scan (`packages/dxf-core/src/layerDefaults.ts`) re-reads the
+LAYER table from the raw DXF text to recover those defaults; it runs on the DXF
+text so the DWG path (DWG → DXF) is covered too, and keeps `dxf-parser` unforked.
+
+*Known limitation:* dash spacing for **scaled block instances** is computed in
+block-local units once per definition, so it is approximate when an instance is
+non-uniformly scaled.
+
 ## Not yet implemented (deferred)
 
-- **Lineweights & dashed linetypes.** Lines render at a constant crisp pixel width
-  via `LineSegments2`; per-entity lineweight (mm) and linetype dashing are carried
-  in the model but not yet applied.
 - **Adaptive tessellation.** Curves use a fixed relative chord tolerance; they will
   facet when zoomed far in. Re-tessellation on zoom is a later refinement.
 - **Paper-space layouts**, **pattern hatches**, **true-color (DXF 420)**

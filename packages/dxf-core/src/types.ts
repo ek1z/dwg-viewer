@@ -35,6 +35,25 @@ export interface Layer {
   visible: boolean;
   /** Layer frozen — hidden and excluded from regen; distinct from "off". */
   frozen: boolean;
+  /** Default lineweight (mm) for ByLayer entities; -1 means "use the viewer default". */
+  lineweight: number;
+  /** Default linetype name for ByLayer entities (e.g. "CONTINUOUS", "DASHED"). */
+  linetype: string;
+}
+
+/**
+ * A linetype definition from the DXF LTYPE table. `pattern` holds the dash/gap
+ * element lengths (DXF group 49): positive = dash (pen down), negative = gap
+ * (pen up), 0 = dot. Lengths are in drawing units, scaled downstream by the
+ * global `$LTSCALE` and each entity's `lineTypeScale`. An empty pattern means a
+ * solid (continuous) line. Embedded text/shape elements are not represented.
+ */
+export interface Linetype {
+  name: string;
+  description: string;
+  pattern: number[];
+  /** Sum of |pattern| (DXF group 40); 0 for continuous. */
+  patternLength: number;
 }
 
 export interface Bounds {
@@ -49,10 +68,12 @@ export interface EntityStyle {
   layer: string;
   /** Concrete color, already resolved through ByLayer / ByBlock / ACI / true-color. */
   color: RGB;
-  /** Lineweight in millimetres; -1 means "default / by layer". */
+  /** Lineweight in millimetres, already resolved through ByLayer; -1 means "use the viewer default". */
   lineweight: number;
-  /** Linetype name (e.g. "CONTINUOUS", "DASHED"); dashing handled downstream. */
+  /** Linetype name (e.g. "CONTINUOUS", "DASHED"), resolved through ByLayer; references {@link Scene.linetypes}. */
   linetype: string;
+  /** Per-entity linetype scale (DXF group 48); multiplies the global `$LTSCALE`. */
+  lineTypeScale: number;
   /** Local-to-world affine (composed block + OCS transforms). */
   transform: Affine;
 }
@@ -184,6 +205,10 @@ export interface DrawingUnits {
 export interface Scene {
   units: DrawingUnits;
   layers: Layer[];
+  /** Linetype definitions from the LTYPE table, keyed by name; referenced by `EntityStyle.linetype`. */
+  linetypes: Record<string, Linetype>;
+  /** Global linetype scale (`$LTSCALE` header); multiplies every dash pattern. Defaults to 1. */
+  ltScale: number;
   /** Top-level renderables: leaf entities plus {@link InstanceEntity} placements. */
   entities: SceneEntity[];
   /** Block definitions referenced by {@link InstanceEntity} entries in `entities`. */
