@@ -7,6 +7,10 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import {
   apply,
   decompose,
+  multiply,
+  type Affine,
+  type BlockDef,
+  type InstanceEntity,
   type Layer,
   type Scene,
   type SceneEntity,
@@ -36,8 +40,50 @@ interface LayerObjects {
   group: THREE.Group;
 }
 
+/** Per-layer geometry accumulator while batching a scene or a block definition. */
+interface Bucket {
+  segPositions: number[];
+  segColors: number[];
+  triPositions: number[];
+  triColors: number[];
+  pointPositions: number[];
+  pointColors: number[];
+}
+
+function emptyBucket(): Bucket {
+  return {
+    segPositions: [],
+    segColors: [],
+    triPositions: [],
+    triColors: [],
+    pointPositions: [],
+    pointColors: [],
+  };
+}
+
+/**
+ * Pre-built, shareable GPU geometry for one layer of a block definition. Every
+ * placement of the block reuses these buffers/materials (uploaded once), drawing
+ * a cheap per-instance object whose only per-placement state is a transform —
+ * this is what keeps memory O(unique blocks) rather than O(placements).
+ */
+interface BlockLayerParts {
+  layer: string;
+  /** Make a scene object for one placement, sharing the underlying geometry. */
+  build: (matrix: THREE.Matrix4) => THREE.Object3D;
+}
+
 const DEFAULT_BG = 0x1e1e1e;
 const DEFAULT_LINE_WIDTH = 1.4;
+const ZERO: Vec2 = { x: 0, y: 0 };
+
+/** Give an object a fixed local matrix (no per-frame recompute) and return it. */
+function placed<T extends THREE.Object3D>(obj: T, matrix: THREE.Matrix4): T {
+  obj.matrixAutoUpdate = false;
+  obj.matrix.copy(matrix);
+  obj.matrixWorldNeedsUpdate = true;
+  return obj;
+}
 
 /**
  * WebGL viewer for a normalized DXF scene.
@@ -55,6 +101,8 @@ export class ViewerEngine {
 
   private readonly layers = new Map<string, LayerObjects>();
   private readonly materials: LineMaterial[] = [];
+  /** Every geometry/material created for the current scene, disposed on clear. */
+  private readonly sceneDisposables: Array<{ dispose(): void }> = [];
   /** Troika text meshes, retained so they can be disposed on scene clear. */
   private readonly textObjects: TroikaText[] = [];
   /** Substitution font URL for TEXT/MTEXT; undefined falls back to troika's default. */
@@ -103,84 +151,46 @@ export class ViewerEngine {
 
     const layerColor = new Map(parsed.layers.map((l) => [l.name, l]));
 
-    type Bucket = {
-      segPositions: number[];
-      segColors: number[];
-      triPositions: number[];
-      triColors: number[];
-      pointPositions: number[];
-      pointColors: number[];
-    };
     const buckets = new Map<string, Bucket>();
     const bucketFor = (layer: string): Bucket => {
       let bk = buckets.get(layer);
-      if (!bk) {
-        bk = {
-          segPositions: [],
-          segColors: [],
-          triPositions: [],
-          triColors: [],
-          pointPositions: [],
-          pointColors: [],
-        };
-        buckets.set(layer, bk);
-      }
+      if (!bk) buckets.set(layer, (bk = emptyBucket()));
       return bk;
     };
 
+    // Repeated blocks are preserved as instances (shared geometry, one draw per
+    // placement); everything else is flattened into the per-layer merge below.
     const snap = new SnapBuilder();
+    const instances: InstanceEntity[] = [];
     for (const e of parsed.entities) {
-      this.appendEntity(e, bucketFor(e.layer));
+      if (e.type === 'instance') {
+        instances.push(e);
+        this.addInstanceSnap(e, parsed, snap);
+        continue;
+      }
+      this.appendEntity(e, bucketFor(e.layer), this.offset);
       this.addEntitySnap(e, snap);
     }
     this.snapIndex = snap.build();
 
+    // One merged geometry per layer for all flattened (non-instanced) entities.
+    const identity = new THREE.Matrix4();
     for (const [layerName, bk] of buckets) {
-      const group = new THREE.Group();
-      group.name = layerName;
+      const group = this.layerGroup(layerName, layerColor);
+      for (const make of this.bucketToParts(bk)) group.add(make(identity));
+    }
 
-      if (bk.segPositions.length) {
-        const geom = new LineSegmentsGeometry();
-        geom.setPositions(new Float32Array(bk.segPositions));
-        geom.setColors(new Float32Array(bk.segColors));
-        const mat = new LineMaterial({
-          linewidth: this.lineWidth,
-          vertexColors: true,
-          worldUnits: false,
-          dashed: false,
-        });
-        this.materials.push(mat);
-        const seg = new LineSegments2(geom, mat);
-        seg.computeLineDistances();
-        group.add(seg);
+    // Instanced blocks: tessellate each definition once into shared GPU buffers,
+    // then add a lightweight per-placement object (frustum-cullable) per layer.
+    if (instances.length) {
+      const blockParts = parsed.blocks.map((def) => this.buildBlockParts(def));
+      const m4 = new THREE.Matrix4();
+      for (const inst of instances) {
+        const parts = blockParts[inst.block];
+        if (!parts) continue;
+        this.affineToMatrix(inst.transform, m4);
+        for (const part of parts) this.layerGroup(part.layer, layerColor).add(part.build(m4));
       }
-
-      if (bk.triPositions.length) {
-        const geom = new THREE.BufferGeometry();
-        geom.setAttribute('position', new THREE.Float32BufferAttribute(bk.triPositions, 3));
-        geom.setAttribute('color', new THREE.Float32BufferAttribute(bk.triColors, 3));
-        const mesh = new THREE.Mesh(
-          geom,
-          new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }),
-        );
-        group.add(mesh);
-      }
-
-      if (bk.pointPositions.length) {
-        const geom = new THREE.BufferGeometry();
-        geom.setAttribute('position', new THREE.Float32BufferAttribute(bk.pointPositions, 3));
-        geom.setAttribute('color', new THREE.Float32BufferAttribute(bk.pointColors, 3));
-        const pts = new THREE.Points(
-          geom,
-          new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true }),
-        );
-        group.add(pts);
-      }
-
-      const layer = layerColor.get(layerName);
-      group.visible = layer ? layer.visible && !layer.frozen : true;
-      this.scene.add(group);
-      this.layers.set(layerName, { group });
     }
 
     // Text is rendered as SDF geometry (troika), not batched into the buckets,
@@ -194,24 +204,99 @@ export class ViewerEngine {
     this.requestRender();
   }
 
-  private appendEntity(
-    e: SceneEntity,
-    bk: {
-      segPositions: number[];
-      segColors: number[];
-      triPositions: number[];
-      triColors: number[];
-      pointPositions: number[];
-      pointColors: number[];
-    },
-  ): void {
+  /**
+   * Turn a batched bucket into shareable GPU geometry, returning factories that
+   * spawn a scene object per use. The merged scene path calls each factory once
+   * (identity transform); the instancing path calls it per placement, reusing the
+   * same geometry/material so a block is uploaded to the GPU only once.
+   */
+  private bucketToParts(bk: Bucket): Array<(matrix: THREE.Matrix4) => THREE.Object3D> {
+    const parts: Array<(matrix: THREE.Matrix4) => THREE.Object3D> = [];
+
+    if (bk.segPositions.length) {
+      const geom = new LineSegmentsGeometry();
+      geom.setPositions(new Float32Array(bk.segPositions));
+      geom.setColors(new Float32Array(bk.segColors));
+      const mat = new LineMaterial({
+        linewidth: this.lineWidth,
+        vertexColors: true,
+        worldUnits: false,
+        dashed: false,
+      });
+      this.materials.push(mat);
+      this.sceneDisposables.push(geom);
+      // Compute line distances and bounds once on the shared geometry.
+      new LineSegments2(geom, mat).computeLineDistances();
+      geom.computeBoundingSphere();
+      geom.computeBoundingBox();
+      parts.push((matrix) => placed(new LineSegments2(geom, mat), matrix));
+    }
+
+    if (bk.triPositions.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(bk.triPositions, 3));
+      geom.setAttribute('color', new THREE.Float32BufferAttribute(bk.triColors, 3));
+      geom.computeBoundingSphere();
+      geom.computeBoundingBox();
+      const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      this.sceneDisposables.push(geom, mat);
+      parts.push((matrix) => placed(new THREE.Mesh(geom, mat), matrix));
+    }
+
+    if (bk.pointPositions.length) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(bk.pointPositions, 3));
+      geom.setAttribute('color', new THREE.Float32BufferAttribute(bk.pointColors, 3));
+      geom.computeBoundingSphere();
+      geom.computeBoundingBox();
+      const mat = new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true });
+      this.sceneDisposables.push(geom, mat);
+      parts.push((matrix) => placed(new THREE.Points(geom, mat), matrix));
+    }
+
+    return parts;
+  }
+
+  /** Tessellate a block definition once into shareable per-layer geometry. */
+  private buildBlockParts(def: BlockDef): BlockLayerParts[] {
+    const buckets = new Map<string, Bucket>();
+    for (const e of def.entities) {
+      // Definitions hold only flattened geometry (no nested instances, no text).
+      if (e.type === 'instance' || e.type === 'text') continue;
+      // Block-local coordinates (no rebasing offset — the placement matrix carries it).
+      let bk = buckets.get(e.layer);
+      if (!bk) buckets.set(e.layer, (bk = emptyBucket()));
+      this.appendEntity(e, bk, ZERO);
+    }
+    const parts: BlockLayerParts[] = [];
+    for (const [layer, bk] of buckets) {
+      for (const build of this.bucketToParts(bk)) parts.push({ layer, build });
+    }
+    return parts;
+  }
+
+  /** Fill a Matrix4 from a 2D affine, applying the rebasing offset to translation. */
+  private affineToMatrix(t: Affine, out: THREE.Matrix4): THREE.Matrix4 {
+    const [a, b, c, d, e, f] = t;
+    // prettier-ignore
+    out.set(
+      a, c, 0, e - this.offset.x,
+      b, d, 0, f - this.offset.y,
+      0, 0, 1, 0,
+      0, 0, 0, 1,
+    );
+    return out;
+  }
+
+  private appendEntity(e: SceneEntity, bk: Bucket, offset: Vec2): void {
+    if (e.type === 'instance' || e.type === 'text') return; // handled in dedicated passes
     const r = e.color.r / 255;
     const g = e.color.g / 255;
     const bl = e.color.b / 255;
 
     const toWorld = (p: Vec2): Vec2 => {
       const w = apply(e.transform, p);
-      return { x: w.x - this.offset.x, y: w.y - this.offset.y };
+      return { x: w.x - offset.x, y: w.y - offset.y };
     };
 
     const pushPolyline = (pts: Vec2[], closed: boolean) => {
@@ -273,9 +358,6 @@ export class ViewerEngine {
         bk.pointColors.push(r, g, bl);
         break;
       }
-      case 'text':
-        // Handled by appendText() in a separate pass (SDF geometry, not batched).
-        break;
     }
   }
 
@@ -434,6 +516,23 @@ export class ViewerEngine {
       }
       case 'text':
         break;
+    }
+  }
+
+  /**
+   * Contribute snap geometry for an instanced block by composing each block-local
+   * leaf with the placement transform and reusing the per-entity snap logic. Snaps
+   * are stored in true world float64 (no rebasing offset), like every other entity.
+   */
+  private addInstanceSnap(inst: InstanceEntity, scene: Scene, snap: SnapBuilder): void {
+    const def = scene.blocks[inst.block];
+    if (!def) return;
+    for (const leaf of def.entities) {
+      if (leaf.type === 'instance') continue; // definitions never nest instances
+      this.addEntitySnap(
+        { ...leaf, transform: multiply(inst.transform, leaf.transform) } as SceneEntity,
+        snap,
+      );
     }
   }
 
@@ -619,17 +718,14 @@ export class ViewerEngine {
       t.dispose();
     }
     this.textObjects.length = 0;
-    for (const { group } of this.layers.values()) {
-      this.scene.remove(group);
-      group.traverse((obj) => {
-        if (obj instanceof THREE.Mesh || obj instanceof THREE.Points) {
-          obj.geometry.dispose();
-        }
-      });
-    }
+    for (const { group } of this.layers.values()) this.scene.remove(group);
     this.layers.clear();
     for (const m of this.materials) m.dispose();
     this.materials.length = 0;
+    // Geometries/materials are shared across instanced placements, so dispose them
+    // once from the tracked list rather than by traversing (which double-frees).
+    for (const d of this.sceneDisposables) d.dispose();
+    this.sceneDisposables.length = 0;
   }
 
   dispose(): void {

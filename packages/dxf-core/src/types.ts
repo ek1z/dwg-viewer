@@ -125,6 +125,27 @@ export interface TextEntity extends EntityStyle {
   width: number;
 }
 
+/**
+ * A placement of a reusable block definition (see {@link BlockDef}). Unlike every
+ * other entity it carries no geometry of its own — only an index into
+ * `Scene.blocks` and the local→world `transform` for this placement. The renderer
+ * tessellates the referenced block once and shares that geometry across every
+ * instance (one GPU upload, per-instance frustum culling) instead of duplicating
+ * the flattened geometry per placement.
+ *
+ * Only block INSERTs that repeat often enough *and* whose geometry is independent
+ * of per-placement context (no TEXT/MTEXT/DIMENSION children) become instances;
+ * everything else is still flattened into the leaf entities above, so fidelity is
+ * identical either way.
+ */
+export interface InstanceEntity {
+  type: 'instance';
+  /** Index into {@link Scene.blocks}. */
+  block: number;
+  /** Block-local → world affine for this placement (parent/OCS/grid/scale baked). */
+  transform: Affine;
+}
+
 export type SceneEntity =
   | PolylineEntity
   | ArcEntity
@@ -132,7 +153,24 @@ export type SceneEntity =
   | SplineEntity
   | PointEntity
   | SolidEntity
-  | TextEntity;
+  | TextEntity
+  | InstanceEntity;
+
+/**
+ * A reusable block definition: the block's leaf geometry, flattened into
+ * block-local coordinates (the placement transform lives on each
+ * {@link InstanceEntity}). Built once per distinct (block, resolved-style)
+ * combination so that ByBlock colour and layer-"0" inheritance — which depend on
+ * the enclosing INSERT — stay correct while still being shared across placements.
+ */
+export interface BlockDef {
+  /** Source block name (diagnostic; not unique — one name may yield several defs). */
+  name: string;
+  /** Leaf entities in block-local coordinates. Never contains nested instances. */
+  entities: SceneEntity[];
+  /** Block-local bounds, for culling/LOD. */
+  bounds: Bounds;
+}
 
 export interface DrawingUnits {
   /** Raw $INSUNITS code (0 = unitless). */
@@ -146,7 +184,15 @@ export interface DrawingUnits {
 export interface Scene {
   units: DrawingUnits;
   layers: Layer[];
+  /** Top-level renderables: leaf entities plus {@link InstanceEntity} placements. */
   entities: SceneEntity[];
+  /** Block definitions referenced by {@link InstanceEntity} entries in `entities`. */
+  blocks: BlockDef[];
+  /**
+   * Total leaf entities once instances are expanded — the "real" drawing
+   * complexity, since `entities.length` collapses each instanced placement to 1.
+   */
+  entityCount: number;
   bounds: Bounds;
   /** Non-fatal issues encountered while building the scene (unsupported entities, etc.). */
   warnings: string[];

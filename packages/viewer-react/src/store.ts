@@ -90,7 +90,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
       status: 'ready',
       units: scene.units,
       warnings: scene.warnings,
-      entityCount: scene.entities.length,
+      entityCount: scene.entityCount,
       layers: scene.layers
         .map((l) => ({
           name: l.name,
