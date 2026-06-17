@@ -26,6 +26,8 @@ interface ViewerState {
   warnings: string[];
   entityCount: number;
   error: string | null;
+  /** Whether per-entity lineweights are rendered (AutoCAD's LWDISPLAY). */
+  lineweightDisplay: boolean;
   /** World-space cursor position (true coords), updated on pointer move. */
   cursor: Vec2 | null;
 
@@ -45,6 +47,7 @@ interface ViewerState {
   failLoad: (message: string) => void;
   toggleLayer: (name: string) => void;
   showAllLayers: () => void;
+  setLineweightDisplay: (enabled: boolean) => void;
   setCursor: (cursor: Vec2 | null) => void;
 
   setTool: (tool: MeasureTool | null) => void;
@@ -65,6 +68,7 @@ export const useViewerStore = create<ViewerState>((set) => ({
   warnings: [],
   entityCount: 0,
   error: null,
+  lineweightDisplay: true,
   cursor: null,
 
   tool: null,
@@ -113,6 +117,8 @@ export const useViewerStore = create<ViewerState>((set) => ({
     set((state) => ({
       layers: state.layers.map((l) => (l.visible ? l : { ...l, visible: true })),
     })),
+
+  setLineweightDisplay: (enabled) => set({ lineweightDisplay: enabled }),
 
   setCursor: (cursor) => set({ cursor }),
 

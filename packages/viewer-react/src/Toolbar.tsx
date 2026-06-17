@@ -33,6 +33,8 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
   const hover = useViewerStore((s) => s.hover);
   const measurements = useViewerStore((s) => s.measurements);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
+  const lineweightDisplay = useViewerStore((s) => s.lineweightDisplay);
+  const setLineweightDisplay = useViewerStore((s) => s.setLineweightDisplay);
 
   const ready = status === 'ready';
   const liveValue =
@@ -78,6 +80,18 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
         disabled={measurements.length === 0 && draftPoints.length === 0}
       >
         Clear
+      </button>
+
+      <span className="dxf-toolbar__divider" />
+      <button
+        type="button"
+        className={`dxf-toolbar__btn${lineweightDisplay ? ' dxf-toolbar__btn--active' : ''}`}
+        onClick={() => setLineweightDisplay(!lineweightDisplay)}
+        disabled={!ready}
+        aria-pressed={lineweightDisplay}
+        title="Show lineweights"
+      >
+        Lineweights
       </button>
 
       <input

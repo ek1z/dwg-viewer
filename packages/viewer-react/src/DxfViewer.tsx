@@ -19,6 +19,8 @@ export interface DxfViewerProps {
    * so no font is fetched from a CDN and rendering stays on-device.
    */
   fontUrl?: string;
+  /** On-screen pixels per mm of lineweight when lineweight display is on. */
+  lineweightScale?: number;
 }
 
 /** Screen-space snap tolerance (CSS pixels) — kept constant on screen via zoom. */
@@ -30,6 +32,7 @@ const DEFAULT_FONT_URL = '/fonts/LiberationSans-Regular.ttf';
 export function DxfViewer({
   background,
   fontUrl = DEFAULT_FONT_URL,
+  lineweightScale,
 }: DxfViewerProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ViewerEngine | null>(null);
@@ -48,6 +51,7 @@ export function DxfViewer({
     if (!canvas) return;
     const engine = new ViewerEngine(canvas, {
       ...(background !== undefined ? { background } : {}),
+      ...(lineweightScale !== undefined ? { lineweightScale } : {}),
       fontUrl,
     });
     engineRef.current = engine;
@@ -108,7 +112,13 @@ export function DxfViewer({
       engine.dispose();
       engineRef.current = null;
     };
-  }, [background, fontUrl]);
+  }, [background, fontUrl, lineweightScale]);
+
+  // Mirror the lineweight-display toggle into the engine (flips material widths).
+  const lineweightDisplay = useViewerStore((s) => s.lineweightDisplay);
+  useEffect(() => {
+    engineRef.current?.setLineweightDisplay(lineweightDisplay);
+  }, [lineweightDisplay]);
 
   // Reserve the left button for point placement while a measure tool is active.
   useEffect(() => {

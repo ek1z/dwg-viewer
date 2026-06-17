@@ -6,3 +6,4 @@ export {
   tessellatePolyline,
   tessellateSpline,
 } from './tessellate.js';
+export { expandDashed } from './dash.js';
