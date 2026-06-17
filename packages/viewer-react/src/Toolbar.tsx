@@ -1,6 +1,8 @@
 import { useRef } from 'react';
 import type { ReactElement } from 'react';
+import type { MeasureTool } from '@dwg-viewer/measure';
 import { useViewerStore } from './store.js';
+import { measurementValue } from './measureLabel.js';
 
 export interface ToolbarProps {
   onOpenFile: (file: File) => void | Promise<void>;
@@ -11,6 +13,12 @@ function formatCoord(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
 }
 
+const TOOLS: ReadonlyArray<{ tool: MeasureTool; label: string }> = [
+  { tool: 'distance', label: 'Distance' },
+  { tool: 'area', label: 'Area' },
+  { tool: 'angle', label: 'Angle' },
+];
+
 export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileName = useViewerStore((s) => s.fileName);
@@ -18,6 +26,19 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
   const entityCount = useViewerStore((s) => s.entityCount);
   const cursor = useViewerStore((s) => s.cursor);
   const status = useViewerStore((s) => s.status);
+
+  const tool = useViewerStore((s) => s.tool);
+  const setTool = useViewerStore((s) => s.setTool);
+  const draftPoints = useViewerStore((s) => s.draftPoints);
+  const hover = useViewerStore((s) => s.hover);
+  const measurements = useViewerStore((s) => s.measurements);
+  const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
+
+  const ready = status === 'ready';
+  const liveValue =
+    tool && draftPoints.length > 0
+      ? measurementValue(tool, hover ? [...draftPoints, hover] : draftPoints, units)
+      : '';
 
   return (
     <div className="dxf-toolbar">
@@ -32,10 +53,33 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
         type="button"
         className="dxf-toolbar__btn"
         onClick={onFit}
-        disabled={status !== 'ready'}
+        disabled={!ready}
       >
         Fit
       </button>
+
+      <span className="dxf-toolbar__divider" />
+      {TOOLS.map(({ tool: t, label }) => (
+        <button
+          key={t}
+          type="button"
+          className={`dxf-toolbar__btn${tool === t ? ' dxf-toolbar__btn--active' : ''}`}
+          onClick={() => setTool(t)}
+          disabled={!ready}
+          aria-pressed={tool === t}
+        >
+          {label}
+        </button>
+      ))}
+      <button
+        type="button"
+        className="dxf-toolbar__btn"
+        onClick={clearMeasurements}
+        disabled={measurements.length === 0 && draftPoints.length === 0}
+      >
+        Clear
+      </button>
+
       <input
         ref={inputRef}
         type="file"
@@ -48,8 +92,9 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
         }}
       />
       <div className="dxf-toolbar__spacer" />
+      {liveValue && <span className="dxf-toolbar__measure">{liveValue}</span>}
       {fileName && <span className="dxf-toolbar__meta">{fileName}</span>}
-      {status === 'ready' && (
+      {ready && (
         <span className="dxf-toolbar__meta">
           {entityCount.toLocaleString()} entities
           {units && units.name !== 'unitless' ? ` · ${units.name}` : ''}

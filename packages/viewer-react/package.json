@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@dwg-viewer/dxf-core": "workspace:*",
+    "@dwg-viewer/measure": "workspace:*",
     "@dwg-viewer/viewer-engine": "workspace:*",
     "zustand": "^5.0.14"
   },

@@ -1,9 +1,11 @@
 # DWG/DXF Viewer
 
-A read-only, browser-based CAD viewer. This repository currently implements the
-**Phase 1 DXF viewer MVP** from [`docs/plans/web-dwg-dxf-viewer.md`](docs/plans/web-dwg-dxf-viewer.md):
-open a DXF, see it rendered correctly, and navigate it (pan/zoom + layer toggles).
-Data stays on the device — parsing and rendering are entirely client-side.
+A read-only, browser-based CAD viewer. This repository implements the **Phase 1
+DXF viewer MVP** and **Phase 2 measurement** from
+[`docs/plans/web-dwg-dxf-viewer.md`](docs/plans/web-dwg-dxf-viewer.md): open a
+DXF, see it rendered correctly, navigate it (pan/zoom + layer toggles), and
+measure it (distance, area, angle) with object snapping. Data stays on the
+device — parsing, rendering and measurement are entirely client-side.
 
 ## Quick start
 
@@ -23,8 +25,8 @@ Then open the app, click **Open DXF** (or drag a `.dxf` onto the canvas).
 apps/web            Astro shell; mounts the viewer as a client:only React island
 packages/dxf-core   DXF → normalized, framework-agnostic float64 scene model
 packages/viewer-engine  three.js renderer: tessellation, rebasing, pan/zoom, layers
-packages/viewer-react   React island wrapping the engine + toolbar + layer panel
-packages/measure        (placeholder) Phase 2 measurement tools
+packages/viewer-react   React island wrapping the engine + toolbar + layer panel + measurement overlay
+packages/measure        snapping (R-tree) + distance/area/angle math + unit-aware formatting
 ```
 
 The packages are **internal/source-consumed**: their `exports` point at TypeScript
@@ -47,8 +49,29 @@ touches React.
    (precision strategy below), batches geometry per layer into fat-line
    (`LineSegments2`) / mesh / point objects, and drives an orthographic camera
    with custom pan/zoom.
-3. **`viewer-react`** + **`apps/web`** provide the file-open flow, layer panel,
-   toolbar (entity count, units, live world-coordinate readout), and Zustand state.
+3. **`measure`** builds an R-tree (`flatbush`) over the scene's snap points
+   (endpoints, midpoints, centers) and segments, and provides the distance /
+   area / angle math and unit-aware formatting. All of it runs on the float64
+   world model, never on f32 GPU coordinates.
+4. **`viewer-react`** + **`apps/web`** provide the file-open flow, layer panel,
+   toolbar (entity count, units, live world-coordinate readout), measurement
+   tools with an SVG annotation overlay, and Zustand state.
+
+### Measurement (plan §4)
+
+Pick **Distance**, **Area**, or **Angle** in the toolbar, then click points on
+the drawing; an SVG overlay draws the annotation and the live value:
+
+- **Snapping** — the cursor snaps to the nearest endpoint, midpoint, center,
+  intersection, or point-on-edge within a fixed pixel tolerance, shown by a
+  marker. Intersections are computed lazily from the few segments near the
+  cursor (never precomputed all-pairs).
+- **Distance** is cumulative (click a polyline; total updates live).
+  **Area** reports area and perimeter of the closed polygon. **Angle** is the
+  included angle at the middle of three clicked points.
+- While a tool is active the left button places points (middle-drag still pans);
+  double-click or **Enter** finishes, **Esc** cancels. Measured values use the
+  drawing's `$INSUNITS`, so distances read in real units.
 
 ### Precision (plan §5)
 
@@ -83,8 +106,11 @@ rendered** (see below).
   in the model but not yet applied.
 - **Adaptive tessellation.** Curves use a fixed relative chord tolerance; they will
   facet when zoomed far in. Re-tessellation on zoom is a later refinement.
-- **Measurement** (Phase 2), **DWG input** (Phase 3), **paper-space layouts**,
-  **pattern hatches**, **true-color (DXF 420)** entities (fall back to layer color).
+- **DWG input** (Phase 3), **paper-space layouts**, **pattern hatches**,
+  **true-color (DXF 420)** entities (fall back to layer color).
+- **Snapping refinements** — snap geometry currently includes all loaded
+  entities (hidden layers included) and uses chord-midpoints for bulge arcs;
+  per-layer filtering and true arc midpoints are later refinements.
 - **Instanced blocks.** INSERTs are flattened (correct, simple); `InstancedMesh`
   is a Phase 4 performance optimization.
 ```

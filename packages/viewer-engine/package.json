@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@dwg-viewer/dxf-core": "workspace:*",
+    "@dwg-viewer/measure": "workspace:*",
     "three": "^0.184.0"
   },
   "devDependencies": {

@@ -5,6 +5,8 @@ import { ViewerEngine } from '@dwg-viewer/viewer-engine';
 import { useViewerStore } from './store.js';
 import { LayerPanel } from './LayerPanel.js';
 import { Toolbar } from './Toolbar.js';
+import { MeasureOverlay } from './MeasureOverlay.js';
+import { toolHint } from './measureLabel.js';
 import './styles.css';
 
 export interface DxfViewerProps {
@@ -12,16 +14,21 @@ export interface DxfViewerProps {
   background?: number;
 }
 
+/** Screen-space snap tolerance (CSS pixels) — kept constant on screen via zoom. */
+const SNAP_PIXELS = 12;
+
 export function DxfViewer({ background }: DxfViewerProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ViewerEngine | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  /** Bumped on every engine camera change so the SVG overlay re-projects. */
+  const [frame, setFrame] = useState(0);
 
   const beginLoad = useViewerStore((s) => s.beginLoad);
   const setScene = useViewerStore((s) => s.setScene);
   const failLoad = useViewerStore((s) => s.failLoad);
-  const setCursor = useViewerStore((s) => s.setCursor);
   const status = useViewerStore((s) => s.status);
+  const tool = useViewerStore((s) => s.tool);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -33,22 +40,76 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
     const ro = new ResizeObserver(() => engine.resize());
     if (container) ro.observe(container);
 
-    const onMove = (ev: PointerEvent) => {
+    const offChange = engine.onChange(() => setFrame((f) => f + 1));
+
+    const snapAt = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
-      setCursor(engine.screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top));
+      const raw = engine.screenToWorld(clientX - rect.left, clientY - rect.top);
+      const snap = engine.querySnap(raw, SNAP_PIXELS);
+      return { world: snap ? snap.point : raw, snap };
     };
-    const onLeave = () => setCursor(null);
+
+    const onMove = (ev: PointerEvent) => {
+      const store = useViewerStore.getState();
+      if (store.tool) {
+        const { world, snap } = snapAt(ev.clientX, ev.clientY);
+        store.setHover(world, snap);
+        store.setCursor(world);
+      } else {
+        const rect = canvas.getBoundingClientRect();
+        store.setCursor(engine.screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top));
+      }
+    };
+    const onLeave = () => {
+      const store = useViewerStore.getState();
+      store.setCursor(null);
+      store.setHover(null, null);
+    };
+    const onClick = (ev: MouseEvent) => {
+      const store = useViewerStore.getState();
+      if (!store.tool || ev.button !== 0) return;
+      store.addDraftPoint(snapAt(ev.clientX, ev.clientY).world);
+    };
+    const onDblClick = (ev: MouseEvent) => {
+      const store = useViewerStore.getState();
+      if (!store.tool) return;
+      ev.preventDefault();
+      store.finishDraft();
+    };
+
     canvas.addEventListener('pointermove', onMove);
     canvas.addEventListener('pointerleave', onLeave);
+    canvas.addEventListener('click', onClick);
+    canvas.addEventListener('dblclick', onDblClick);
 
     return () => {
       ro.disconnect();
+      offChange();
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerleave', onLeave);
+      canvas.removeEventListener('click', onClick);
+      canvas.removeEventListener('dblclick', onDblClick);
       engine.dispose();
       engineRef.current = null;
     };
-  }, [background, setCursor]);
+  }, [background]);
+
+  // Reserve the left button for point placement while a measure tool is active.
+  useEffect(() => {
+    engineRef.current?.setPanWithLeftButton(tool === null);
+  }, [tool]);
+
+  // Enter finishes the in-progress measurement; Escape cancels it.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const store = useViewerStore.getState();
+      if (!store.tool) return;
+      if (ev.key === 'Enter') store.finishDraft();
+      else if (ev.key === 'Escape') store.cancelDraft();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const loadFile = useCallback(
     async (file: File) => {
@@ -88,7 +149,9 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
       <div className="dxf-viewer__body">
         <LayerPanel onSetLayerVisible={onSetLayerVisible} />
         <div
-          className={`dxf-viewer__stage${dragOver ? ' dxf-viewer__stage--dragover' : ''}`}
+          className={`dxf-viewer__stage${dragOver ? ' dxf-viewer__stage--dragover' : ''}${
+            tool ? ' dxf-viewer__stage--measuring' : ''
+          }`}
           onDragOver={(e) => {
             e.preventDefault();
             setDragOver(true);
@@ -97,10 +160,14 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
           onDrop={onDrop}
         >
           <canvas ref={canvasRef} className="dxf-viewer__canvas" />
+          <MeasureOverlay engineRef={engineRef} frame={frame} />
           {status === 'idle' && (
             <div className="dxf-viewer__hint">Open or drop a .dxf file to begin</div>
           )}
           {status === 'loading' && <div className="dxf-viewer__hint">Parsing…</div>}
+          {status === 'ready' && tool && (
+            <div className="dxf-viewer__measure-hint">{toolHint(tool)}</div>
+          )}
         </div>
       </div>
     </div>
