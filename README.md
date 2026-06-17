@@ -114,14 +114,31 @@ remains open without touching anything downstream of the parse step.
 
 LINE, LWPOLYLINE, POLYLINE (with bulges), CIRCLE, ARC, ELLIPSE, SPLINE (NURBS via
 de Boor), POINT, SOLID/3DFACE, INSERT (nested, arrays), DIMENSION (renders its
-anonymous block). TEXT/MTEXT are parsed and retained in the model but **not yet
-rendered** (see below).
+anonymous block), TEXT/MTEXT (SDF text via font substitution — see below).
+
+### Text rendering (plan §3, Phase 4)
+
+TEXT/MTEXT are rendered as **SDF geometry** with [`troika-three-text`](https://github.com/protectwise/troika).
+SHX fonts aren't embedded in DXF, so glyphs are **substituted** with a bundled
+TrueType font — **Liberation Sans** (SIL OFL 1.1, metric-compatible with Arial),
+self-hosted at `apps/web/public/fonts` so nothing is fetched from a CDN and both
+drawing data and rendering stay on-device. SDF keeps text crisp at any zoom,
+which matters because text is sized in **world units** and scales with the
+drawing.
+
+Sizing and placement run on the float64 model exactly like every other
+primitive: DXF `height` (cap height) maps to troika's em-box `fontSize` via a
+cap-height ratio, the entity's INSERT/OCS transform is decomposed into rotation +
+scale, alignment maps to cap/baseline-relative anchors, and MTEXT reference-width
+wrapping is honored. MTEXT inline formatting (`\P`, font/height/color runs,
+stacked fractions, `\U+XXXX`, brace groups) and DTEXT `%%`-codes (`%%d`→°,
+`%%c`→⌀, `%%p`→±) are decoded to plain text (`packages/viewer-engine/src/text.ts`,
+unit-tested); styling runs are dropped — content fidelity, not style fidelity.
+Substitution means it won't be pixel-perfect against the original SHX, as the
+plan calls out.
 
 ## Not yet implemented (deferred)
 
-- **Text rendering.** TEXT/MTEXT are parsed but not drawn; SHX→TrueType
-  substitution (SDF/atlas) is the Phase 0/2 text spike. Text is often the bulk of
-  entities and the top fidelity complaint — budgeted, not done.
 - **Lineweights & dashed linetypes.** Lines render at a constant crisp pixel width
   via `LineSegments2`; per-entity lineweight (mm) and linetype dashing are carried
   in the model but not yet applied.
