@@ -47,7 +47,7 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
         className="dxf-toolbar__btn"
         onClick={() => inputRef.current?.click()}
       >
-        Open DXF
+        Open
       </button>
       <button
         type="button"
@@ -83,7 +83,7 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
       <input
         ref={inputRef}
         type="file"
-        accept=".dxf,application/dxf,image/vnd.dxf"
+        accept=".dxf,.dwg,application/dxf,image/vnd.dxf,image/vnd.dwg,application/acad"
         style={{ display: 'none' }}
         onChange={(e) => {
           const file = e.target.files?.[0];

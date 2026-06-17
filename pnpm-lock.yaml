@@ -16,13 +16,13 @@ importers:
     dependencies:
       '@astrojs/react':
         specifier: ^5.0.7
-        version: 5.0.7(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(lightningcss@1.32.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+        version: 5.0.7(@types/node@22.19.21)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(lightningcss@1.32.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@dwg-viewer/viewer-react':
         specifier: workspace:*
         version: link:../../packages/viewer-react
       astro:
         specifier: ^6.4.8
-        version: 6.4.8(lightningcss@1.32.0)(rollup@4.62.0)
+        version: 6.4.8(@types/node@22.19.21)(lightningcss@1.32.0)(rollup@4.62.0)
       react:
         specifier: ^19.2.0
         version: 19.2.7
@@ -43,6 +43,28 @@ importers:
         specifier: ^5.9.2
         version: 5.9.3
 
+  packages/dwg-core:
+    dependencies:
+      '@dwg-viewer/dxf-core':
+        specifier: workspace:*
+        version: link:../dxf-core
+      '@mlightcad/libredwg-web':
+        specifier: ^0.7.4
+        version: 0.7.4
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.19.21
+      tsdown:
+        specifier: ^0.22.3
+        version: 0.22.3(typescript@5.9.3)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))
+
   packages/dxf-core:
     dependencies:
       dxf-parser:
@@ -57,7 +79,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(vite@8.0.16(esbuild@0.27.7))
+        version: 4.1.9(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))
 
   packages/measure:
     dependencies:
@@ -73,7 +95,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(vite@8.0.16(esbuild@0.27.7))
+        version: 4.1.9(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))
 
   packages/viewer-engine:
     dependencies:
@@ -98,10 +120,13 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(vite@8.0.16(esbuild@0.27.7))
+        version: 4.1.9(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))
 
   packages/viewer-react:
     dependencies:
+      '@dwg-viewer/dwg-core':
+        specifier: workspace:*
+        version: link:../dwg-core
       '@dwg-viewer/dxf-core':
         specifier: workspace:*
         version: link:../dxf-core
@@ -135,7 +160,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(vite@8.0.16(esbuild@0.27.7))
+        version: 4.1.9(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))
 
 packages:
 
@@ -627,6 +652,10 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
+  '@mlightcad/libredwg-web@0.7.4':
+    resolution: {integrity: sha512-l6qHbM6NgyCsI308J4hrfCb97jvsYZkwviPY6ZthQPMXvy2a1DNFb00TlOzwPjhbT1kdsHaJ0EWuN+L0eNfVng==}
+    engines: {node: '>=20'}
+
   '@napi-rs/wasm-runtime@1.1.5':
     resolution: {integrity: sha512-AWPoBRJ9tsnVhor4sjO7rkni+7p+2IAEFj6cx06UgP10jkQHqay/36uRV/bFkgrh18D9vb4cr8Q0Pthskgzy+Q==}
     peerDependencies:
@@ -1066,6 +1095,9 @@ packages:
 
   '@types/nlcst@2.0.3':
     resolution: {integrity: sha512-vSYNSDe6Ix3q+6Z7ri9lyWqgGhJTmzRjZRqyq15N0Z/1/UnVsno9G/N40NBijoYx2seFDIl0+B2mgAb9mezUCA==}
+
+  '@types/node@22.19.21':
+    resolution: {integrity: sha512-VMeFBSCKQKmm2swI2kW51SFusDqekC6q9trBCvJ/JliDchFSuoYYKN7yVNjPthP1HKZcx3U1gI/wTcEBjEFKTA==}
 
   '@types/react-dom@19.2.3':
     resolution: {integrity: sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ==}
@@ -2108,6 +2140,9 @@ packages:
   uncrypto@0.1.3:
     resolution: {integrity: sha512-Ql87qFHB3s/De2ClA9e0gsnS6zXG27SkTiSJwjCc9MebbfapQfuPzumMIUMi38ezPZVNFcHI9sUIepeQfw8J8Q==}
 
+  undici-types@6.21.0:
+    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+
   unified@11.0.5:
     resolution: {integrity: sha512-xKvGhPWw3k84Qjh8bI3ZeJjqnyadK+GEFtazSfZv/rKeTkTjOJho6mFqh2SM96iIcZokxiOpg78GazTSg8+KHA==}
 
@@ -2441,17 +2476,17 @@ snapshots:
     dependencies:
       prismjs: 1.30.0
 
-  '@astrojs/react@5.0.7(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(lightningcss@1.32.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+  '@astrojs/react@5.0.7(@types/node@22.19.21)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(lightningcss@1.32.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
     dependencies:
       '@astrojs/internal-helpers': 0.10.0
       '@types/react': 19.2.17
       '@types/react-dom': 19.2.3(@types/react@19.2.17)
-      '@vitejs/plugin-react': 5.2.0(vite@7.3.5(lightningcss@1.32.0))
+      '@vitejs/plugin-react': 5.2.0(vite@7.3.5(@types/node@22.19.21)(lightningcss@1.32.0))
       devalue: 5.8.1
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       ultrahtml: 1.6.0
-      vite: 7.3.5(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@22.19.21)(lightningcss@1.32.0)
     transitivePeerDependencies:
       - '@types/node'
       - jiti
@@ -2852,6 +2887,8 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@mlightcad/libredwg-web@0.7.4': {}
+
   '@napi-rs/wasm-runtime@1.1.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
@@ -3160,6 +3197,10 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
+  '@types/node@22.19.21':
+    dependencies:
+      undici-types: 6.21.0
+
   '@types/react-dom@19.2.3(@types/react@19.2.17)':
     dependencies:
       '@types/react': 19.2.17
@@ -3185,7 +3226,7 @@ snapshots:
 
   '@ungap/structured-clone@1.3.1': {}
 
-  '@vitejs/plugin-react@5.2.0(vite@7.3.5(lightningcss@1.32.0))':
+  '@vitejs/plugin-react@5.2.0(vite@7.3.5(@types/node@22.19.21)(lightningcss@1.32.0))':
     dependencies:
       '@babel/core': 7.29.7
       '@babel/plugin-transform-react-jsx-self': 7.29.7(@babel/core@7.29.7)
@@ -3193,7 +3234,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-rc.3
       '@types/babel__core': 7.20.5
       react-refresh: 0.18.0
-      vite: 7.3.5(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@22.19.21)(lightningcss@1.32.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -3206,13 +3247,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.9(vite@8.0.16(esbuild@0.27.7))':
+  '@vitest/mocker@4.1.9(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))':
     dependencies:
       '@vitest/spy': 4.1.9
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.16(esbuild@0.27.7)
+      vite: 8.0.16(@types/node@22.19.21)(esbuild@0.27.7)
 
   '@vitest/pretty-format@4.1.9':
     dependencies:
@@ -3259,7 +3300,7 @@ snapshots:
       estree-walker: 3.0.3
       pathe: 2.0.3
 
-  astro@6.4.8(lightningcss@1.32.0)(rollup@4.62.0):
+  astro@6.4.8(@types/node@22.19.21)(lightningcss@1.32.0)(rollup@4.62.0):
     dependencies:
       '@astrojs/compiler': 4.0.0
       '@astrojs/internal-helpers': 0.10.0
@@ -3311,8 +3352,8 @@ snapshots:
       unist-util-visit: 5.1.0
       unstorage: 1.17.5
       vfile: 6.0.3
-      vite: 7.3.5(lightningcss@1.32.0)
-      vitefu: 1.1.3(vite@7.3.5(lightningcss@1.32.0))
+      vite: 7.3.5(@types/node@22.19.21)(lightningcss@1.32.0)
+      vitefu: 1.1.3(vite@7.3.5(@types/node@22.19.21)(lightningcss@1.32.0))
       xxhash-wasm: 1.1.0
       yargs-parser: 22.0.0
       zod: 4.4.3
@@ -4550,6 +4591,8 @@ snapshots:
 
   uncrypto@0.1.3: {}
 
+  undici-types@6.21.0: {}
+
   unified@11.0.5:
     dependencies:
       '@types/unist': 3.0.3
@@ -4640,7 +4683,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@7.3.5(lightningcss@1.32.0):
+  vite@7.3.5(@types/node@22.19.21)(lightningcss@1.32.0):
     dependencies:
       esbuild: 0.27.7
       fdir: 6.5.0(picomatch@4.0.4)
@@ -4649,10 +4692,11 @@ snapshots:
       rollup: 4.62.0
       tinyglobby: 0.2.17
     optionalDependencies:
+      '@types/node': 22.19.21
       fsevents: 2.3.3
       lightningcss: 1.32.0
 
-  vite@8.0.16(esbuild@0.27.7):
+  vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -4660,17 +4704,18 @@ snapshots:
       rolldown: 1.0.3
       tinyglobby: 0.2.17
     optionalDependencies:
+      '@types/node': 22.19.21
       esbuild: 0.27.7
       fsevents: 2.3.3
 
-  vitefu@1.1.3(vite@7.3.5(lightningcss@1.32.0)):
+  vitefu@1.1.3(vite@7.3.5(@types/node@22.19.21)(lightningcss@1.32.0)):
     optionalDependencies:
-      vite: 7.3.5(lightningcss@1.32.0)
+      vite: 7.3.5(@types/node@22.19.21)(lightningcss@1.32.0)
 
-  vitest@4.1.9(vite@8.0.16(esbuild@0.27.7)):
+  vitest@4.1.9(@types/node@22.19.21)(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7)):
     dependencies:
       '@vitest/expect': 4.1.9
-      '@vitest/mocker': 4.1.9(vite@8.0.16(esbuild@0.27.7))
+      '@vitest/mocker': 4.1.9(vite@8.0.16(@types/node@22.19.21)(esbuild@0.27.7))
       '@vitest/pretty-format': 4.1.9
       '@vitest/runner': 4.1.9
       '@vitest/snapshot': 4.1.9
@@ -4687,8 +4732,10 @@ snapshots:
       tinyexec: 1.2.4
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
-      vite: 8.0.16(esbuild@0.27.7)
+      vite: 8.0.16(@types/node@22.19.21)(esbuild@0.27.7)
       why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@types/node': 22.19.21
     transitivePeerDependencies:
       - msw
 

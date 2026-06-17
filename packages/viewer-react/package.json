@@ -18,6 +18,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@dwg-viewer/dwg-core": "workspace:*",
     "@dwg-viewer/dxf-core": "workspace:*",
     "@dwg-viewer/measure": "workspace:*",
     "@dwg-viewer/viewer-engine": "workspace:*",

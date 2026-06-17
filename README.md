@@ -1,11 +1,12 @@
 # DWG/DXF Viewer
 
 A read-only, browser-based CAD viewer. This repository implements the **Phase 1
-DXF viewer MVP** and **Phase 2 measurement** from
+DXF viewer MVP**, **Phase 2 measurement**, and **Phase 3 DWG input** from
 [`docs/plans/web-dwg-dxf-viewer.md`](docs/plans/web-dwg-dxf-viewer.md): open a
-DXF, see it rendered correctly, navigate it (pan/zoom + layer toggles), and
-measure it (distance, area, angle) with object snapping. Data stays on the
-device — parsing, rendering and measurement are entirely client-side.
+DXF **or DWG**, see it rendered correctly, navigate it (pan/zoom + layer
+toggles), and measure it (distance, area, angle) with object snapping. Data
+stays on the device — conversion, parsing, rendering and measurement are
+entirely client-side.
 
 ## Quick start
 
@@ -17,13 +18,14 @@ pnpm test         # unit tests (vitest)
 pnpm typecheck    # tsc across all packages
 ```
 
-Then open the app, click **Open DXF** (or drag a `.dxf` onto the canvas).
+Then open the app, click **Open** (or drag a `.dxf`/`.dwg` onto the canvas).
 
 ## Monorepo layout
 
 ```
 apps/web            Astro shell; mounts the viewer as a client:only React island
 packages/dxf-core   DXF → normalized, framework-agnostic float64 scene model
+packages/dwg-core   DWG → DXF (libredwg WASM) → dxf-core scene model
 packages/viewer-engine  three.js renderer: tessellation, rebasing, pan/zoom, layers
 packages/viewer-react   React island wrapping the engine + toolbar + layer panel + measurement overlay
 packages/measure        snapping (R-tree) + distance/area/angle math + unit-aware formatting
@@ -57,6 +59,17 @@ touches React.
    toolbar (entity count, units, live world-coordinate readout), measurement
    tools with an SVG annotation overlay, and Zustand state.
 
+### DWG input (plan §4, Phase 3)
+
+`.dwg` files are handled by **`dwg-core`**, which converts the drawing to DXF
+in-browser with the [`@mlightcad/libredwg-web`](https://github.com/mlightcad/libredwg-web)
+WASM build of LibreDWG, then feeds the result through the exact same `parseDxf`
+pipeline as native DXF. Nothing downstream of the parse step knows or cares which
+format the file started as — the scene model, rendering, snapping and measurement
+are identical either way (the plan's "everything downstream consumes the
+normalized model"). The ~7 MB WASM module is dynamically imported and loaded once
+on first DWG open, so DXF-only sessions never download it.
+
 ### Measurement (plan §4)
 
 Pick **Distance**, **Area**, or **Angle** in the toolbar, then click points on
@@ -89,6 +102,14 @@ cares about. We use **`dxf-parser` (MIT)** instead, isolated behind an adapter
 (`packages/dxf-core/src/adapter.ts`) so the parser remains swappable if a Phase 0
 spike against real drawings favors something else.
 
+The **DWG** path is a different story: `@mlightcad/libredwg-web` is **GPL-3.0**, so
+shipping it imposes copyleft on the bundle. Per the plan's §1 analysis this is
+**option A** — fine for an internal tool, the risk to revisit before distributing
+externally. It is isolated in its own `dwg-core` package and dynamically imported,
+so it only ships if you build with DWG support; `dxf-core` stays MIT-only. The
+alternative (option B — a server-side `dwg2dxf` so GPL stays out of the frontend)
+remains open without touching anything downstream of the parse step.
+
 ## Supported entities
 
 LINE, LWPOLYLINE, POLYLINE (with bulges), CIRCLE, ARC, ELLIPSE, SPLINE (NURBS via
@@ -106,8 +127,8 @@ rendered** (see below).
   in the model but not yet applied.
 - **Adaptive tessellation.** Curves use a fixed relative chord tolerance; they will
   facet when zoomed far in. Re-tessellation on zoom is a later refinement.
-- **DWG input** (Phase 3), **paper-space layouts**, **pattern hatches**,
-  **true-color (DXF 420)** entities (fall back to layer color).
+- **Paper-space layouts**, **pattern hatches**, **true-color (DXF 420)**
+  entities (fall back to layer color).
 - **Snapping refinements** — snap geometry currently includes all loaded
   entities (hidden layers included) and uses chord-midpoints for bulge arcs;
   per-layer filtering and true arc midpoints are later refinements.
