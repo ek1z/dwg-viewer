@@ -1,17 +1,35 @@
+/// <reference path="./troika-three-text.d.ts" />
 import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
-import { apply, type Scene, type SceneEntity, type Vec2 } from '@dwg-viewer/dxf-core';
+import {
+  apply,
+  decompose,
+  type Layer,
+  type Scene,
+  type SceneEntity,
+  type TextEntity,
+  type Vec2,
+} from '@dwg-viewer/dxf-core';
 import { SnapBuilder, type SnapIndex, type SnapResult } from '@dwg-viewer/measure';
+import { Text as TroikaText } from 'troika-three-text';
 import { tessellateArc, tessellateEllipse, tessellatePolyline, tessellateSpline } from './tessellate.js';
+import { anchorX, anchorY, CAP_HEIGHT_RATIO, decodeText } from './text.js';
 
 export interface ViewerOptions {
   /** Background color (hex). Default dark CAD grey. */
   background?: number;
   /** Constant on-screen line width in CSS pixels. */
   lineWidth?: number;
+  /**
+   * URL of a TrueType/OpenType/WOFF font for rendering TEXT/MTEXT. SHX fonts
+   * aren't embedded in DXF, so glyphs are substituted (plan §3). When omitted,
+   * troika fetches its default font from a CDN — pass a self-hosted URL to keep
+   * everything on-device.
+   */
+  fontUrl?: string;
 }
 
 interface LayerObjects {
@@ -37,6 +55,10 @@ export class ViewerEngine {
 
   private readonly layers = new Map<string, LayerObjects>();
   private readonly materials: LineMaterial[] = [];
+  /** Troika text meshes, retained so they can be disposed on scene clear. */
+  private readonly textObjects: TroikaText[] = [];
+  /** Substitution font URL for TEXT/MTEXT; undefined falls back to troika's default. */
+  private readonly fontUrl?: string;
 
   /** Rebasing offset: worldLocal = world − offset. */
   private offset: Vec2 = { x: 0, y: 0 };
@@ -62,6 +84,7 @@ export class ViewerEngine {
     options: ViewerOptions = {},
   ) {
     this.lineWidth = options.lineWidth ?? DEFAULT_LINE_WIDTH;
+    this.fontUrl = options.fontUrl;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setClearColor(options.background ?? DEFAULT_BG, 1);
     this.camera.position.z = 10;
@@ -160,6 +183,12 @@ export class ViewerEngine {
       this.layers.set(layerName, { group });
     }
 
+    // Text is rendered as SDF geometry (troika), not batched into the buckets,
+    // so it runs as a separate pass once the line/mesh layer groups exist.
+    for (const e of parsed.entities) {
+      if (e.type === 'text') this.appendText(e, layerColor);
+    }
+
     this.fitToView(parsed);
     this.updateMaterialResolution();
     this.requestRender();
@@ -245,10 +274,61 @@ export class ViewerEngine {
         break;
       }
       case 'text':
-        // Text rendering (SDF/atlas substitution for SHX) is deferred; the
-        // entity is retained in the scene model for a later text pass.
+        // Handled by appendText() in a separate pass (SDF geometry, not batched).
         break;
     }
+  }
+
+  /**
+   * Build a troika `Text` mesh for a TEXT/MTEXT entity and add it to its layer
+   * group. SHX fonts aren't embedded in DXF, so glyphs are substituted with the
+   * bundled font (plan §3). Sizing/placement run on the f64 model (height,
+   * position, rotation, INSERT/OCS transform), rebased by `offset` like every
+   * other primitive; only the final f32 vertices reach the GPU.
+   */
+  private appendText(e: TextEntity, layerColor: Map<string, Layer>): void {
+    const content = decodeText(e.text, e.isMText);
+    if (!content.trim()) return;
+
+    const world = apply(e.transform, e.position);
+    const { rotation, scaleX, scaleY } = decompose(e.transform);
+
+    const t = new TroikaText();
+    if (this.fontUrl) t.font = this.fontUrl;
+    t.text = content;
+    // DXF height is cap height; troika fontSize is the em box (see CAP_HEIGHT_RATIO).
+    t.fontSize = (e.height * scaleY) / CAP_HEIGHT_RATIO;
+    t.color = (e.color.r << 16) | (e.color.g << 8) | e.color.b;
+    t.anchorX = anchorX(e.hAlign);
+    t.anchorY = anchorY(e.vAlign);
+    t.textAlign = e.hAlign;
+    // MTEXT reference rectangle width drives wrapping; 0 means no wrap.
+    if (e.isMText && e.width > 0) t.maxWidth = e.width * scaleX;
+    t.position.set(world.x - this.offset.x, world.y - this.offset.y, 0);
+    t.rotation.z = e.rotation + rotation;
+    // Draw text above fills/lines sharing z=0 to avoid the orthographic tie.
+    t.renderOrder = 1;
+
+    this.layerGroup(e.layer, layerColor).add(t);
+    this.textObjects.push(t);
+    // Layout/SDF generation is async; repaint once it completes.
+    t.sync(() => this.requestRender());
+  }
+
+  /**
+   * Layer group for `name`, creating it if no batched geometry produced one
+   * (a layer can hold only text). Mirrors the visibility rule used for buckets.
+   */
+  private layerGroup(name: string, layerColor: Map<string, Layer>): THREE.Group {
+    const existing = this.layers.get(name);
+    if (existing) return existing.group;
+    const group = new THREE.Group();
+    group.name = name;
+    const layer = layerColor.get(name);
+    group.visible = layer ? layer.visible && !layer.frozen : true;
+    this.scene.add(group);
+    this.layers.set(name, { group });
+    return group;
   }
 
   /**
@@ -534,6 +614,11 @@ export class ViewerEngine {
   }
 
   private clearScene(): void {
+    for (const t of this.textObjects) {
+      t.parent?.remove(t);
+      t.dispose();
+    }
+    this.textObjects.length = 0;
     for (const { group } of this.layers.values()) {
       this.scene.remove(group);
       group.traverse((obj) => {

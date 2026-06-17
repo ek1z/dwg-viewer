@@ -11,7 +11,9 @@ export {
   scaling,
   rotation,
   isReflecting,
+  decompose,
 } from './matrix.js';
+export type { Decomposed } from './matrix.js';
 export { aciToRGB, unpackRGB, resolveColor } from './color.js';
 export { resolveUnits } from './units.js';
 export { buildScene } from './adapter.js';

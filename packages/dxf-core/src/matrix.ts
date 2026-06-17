@@ -49,3 +49,32 @@ export function isReflecting(m: Affine): boolean {
   const det = m[0] * m[3] - m[1] * m[2];
   return det < 0;
 }
+
+export interface Decomposed {
+  /** Rotation of the local X axis into world, radians CCW. */
+  rotation: number;
+  /** Non-negative scale along the local X axis. */
+  scaleX: number;
+  /** Non-negative scale along the local Y axis. */
+  scaleY: number;
+  /** True when the transform mirrors (negative determinant). */
+  reflected: boolean;
+}
+
+/**
+ * Decompose an affine into rotation + per-axis scale (translation dropped).
+ * Used to place primitives that need a single angle and size rather than a full
+ * matrix — e.g. text, whose glyph layout the renderer can't express as a 2×3.
+ * Scales are kept non-negative; a mirror surfaces via `reflected` instead of a
+ * negative scale (matrix math can't tell which axis was flipped, and callers
+ * generally want to keep glyphs readable rather than mirror them).
+ */
+export function decompose(m: Affine): Decomposed {
+  const [a, b, c, d] = m;
+  const det = a * d - b * c;
+  const scaleX = Math.hypot(a, b);
+  // Recover Y scale from the signed area so a uniform scale round-trips exactly;
+  // fall back to the raw column length for a degenerate (zero-width) X axis.
+  const scaleY = scaleX === 0 ? Math.hypot(c, d) : Math.abs(det) / scaleX;
+  return { rotation: Math.atan2(b, a), scaleX, scaleY, reflected: det < 0 };
+}

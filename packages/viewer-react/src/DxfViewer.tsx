@@ -13,12 +13,24 @@ import './styles.css';
 export interface DxfViewerProps {
   /** Background color for the canvas (hex). */
   background?: number;
+  /**
+   * URL of the TrueType/OpenType/WOFF font used to substitute SHX for TEXT/MTEXT.
+   * Defaults to the bundled Liberation Sans served from the app's `public/` dir,
+   * so no font is fetched from a CDN and rendering stays on-device.
+   */
+  fontUrl?: string;
 }
 
 /** Screen-space snap tolerance (CSS pixels) — kept constant on screen via zoom. */
 const SNAP_PIXELS = 12;
 
-export function DxfViewer({ background }: DxfViewerProps): ReactElement {
+/** Self-hosted substitution font shipped in `apps/web/public/fonts`. */
+const DEFAULT_FONT_URL = '/fonts/LiberationSans-Regular.ttf';
+
+export function DxfViewer({
+  background,
+  fontUrl = DEFAULT_FONT_URL,
+}: DxfViewerProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<ViewerEngine | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -34,7 +46,10 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const engine = new ViewerEngine(canvas, background !== undefined ? { background } : {});
+    const engine = new ViewerEngine(canvas, {
+      ...(background !== undefined ? { background } : {}),
+      fontUrl,
+    });
     engineRef.current = engine;
 
     const container = canvas.parentElement;
@@ -93,7 +108,7 @@ export function DxfViewer({ background }: DxfViewerProps): ReactElement {
       engine.dispose();
       engineRef.current = null;
     };
-  }, [background]);
+  }, [background, fontUrl]);
 
   // Reserve the left button for point placement while a measure tool is active.
   useEffect(() => {
