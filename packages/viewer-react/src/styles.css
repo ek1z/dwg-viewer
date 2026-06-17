@@ -1,0 +1,143 @@
+.dxf-viewer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: #e6e6e6;
+  background: #1e1e1e;
+}
+
+.dxf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  border-bottom: 1px solid #3a3a3a;
+  flex: 0 0 auto;
+}
+
+.dxf-toolbar__btn {
+  background: #3a3a3a;
+  color: #e6e6e6;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dxf-toolbar__btn:hover:not(:disabled) {
+  background: #454545;
+}
+.dxf-toolbar__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.dxf-toolbar__spacer {
+  flex: 1 1 auto;
+}
+.dxf-toolbar__meta {
+  font-size: 12px;
+  color: #a0a0a0;
+}
+.dxf-toolbar__coords {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #c8c8c8;
+  min-width: 160px;
+  text-align: right;
+}
+
+.dxf-viewer__body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.dxf-layers {
+  flex: 0 0 220px;
+  overflow-y: auto;
+  background: #252525;
+  border-right: 1px solid #3a3a3a;
+  padding: 8px;
+}
+.dxf-layers__header {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9a9a9a;
+  margin-bottom: 6px;
+}
+.dxf-layers__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.dxf-layers__label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 2px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dxf-layers__swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  flex: 0 0 auto;
+}
+.dxf-layers__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dxf-layers__badge {
+  margin-left: auto;
+  font-size: 10px;
+  color: #7aa7ff;
+}
+.dxf-layers__warnings {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #d8a657;
+}
+.dxf-layers__warnings ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.dxf-viewer__stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dxf-viewer__stage--dragover::after {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 2px dashed #7aa7ff;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.dxf-viewer__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+.dxf-viewer__hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #777;
+  font-size: 14px;
+  pointer-events: none;
+}

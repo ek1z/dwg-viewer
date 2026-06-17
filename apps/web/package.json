@@ -1,0 +1,25 @@
+{
+  "name": "@dwg-viewer/web",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check"
+  },
+  "dependencies": {
+    "@astrojs/react": "^5.0.7",
+    "@dwg-viewer/viewer-react": "workspace:*",
+    "astro": "^6.4.8",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.2"
+  }
+}
