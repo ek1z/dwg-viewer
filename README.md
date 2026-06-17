@@ -45,8 +45,9 @@ touches React.
    (arcs, ellipses, splines, polyline bulges) stay **parametric** — the engine
    owns tessellation. Each entity carries a 2D affine transform into which block
    INSERT placement (nesting, non-uniform/mirrored scale, MINSERT arrays) and OCS
-   extrusion correction are baked. Colors are resolved through ByLayer/ByBlock/ACI;
-   `$INSUNITS` sets the drawing units.
+   extrusion correction are baked. Frequently-repeated blocks are instead kept as
+   shared, instanced definitions (see *Block instancing* below). Colors are resolved
+   through ByLayer/ByBlock/ACI; `$INSUNITS` sets the drawing units.
 2. **`viewer-engine`** tessellates curves, rebases coordinates to a local origin
    (precision strategy below), batches geometry per layer into fat-line
    (`LineSegments2`) / mesh / point objects, and drives an orthographic camera
@@ -85,6 +86,30 @@ the drawing; an SVG overlay draws the annotation and the live value:
 - While a tool is active the left button places points (middle-drag still pans);
   double-click or **Enter** finishes, **Esc** cancels. Measured values use the
   drawing's `$INSUNITS`, so distances read in real units.
+
+### Block instancing (plan §5 — performance)
+
+Drawings often place the same block (a symbol, fixture, tree, title-block detail)
+hundreds or thousands of times. Flattening every placement duplicates its geometry
+in CPU and GPU memory and re-tessellates it once per copy. Instead, `dxf-core`
+keeps a block that repeats **≥ 4 times** as a lightweight `InstanceEntity` — just a
+block index plus the placement's local→world affine — pointing at a shared entry in
+`scene.blocks`. The engine tessellates each block definition **once** into shared
+GPU buffers and draws each placement as a thin scene object that reuses those
+buffers, so memory is **O(unique blocks)** rather than **O(placements)**, and each
+placement is **frustum-culled** independently — off-screen copies cost nothing to
+draw. A single MINSERT grid expands to one instance per cell over the same shared
+definition.
+
+Definitions are keyed by `(block, resolved layer + colour)`, so ByBlock colour and
+layer-"0" inheritance — which depend on the enclosing INSERT — stay correct while
+still sharing across placements with the same context. Blocks below the threshold,
+and any block containing **TEXT/MTEXT or DIMENSION** (text renders as separate SDF
+meshes; dimensions carry anonymous sub-blocks), fall back to the flatten-and-merge
+path, so rendering, snapping and measurement are identical either way. Only
+top-level INSERTs instance; nested blocks flatten into their parent definition
+(which is itself shared once). The toolbar's entity count reports expanded leaf
+geometry (`scene.entityCount`), not the collapsed instance count.
 
 ### Precision (plan §5)
 
@@ -149,6 +174,4 @@ plan calls out.
 - **Snapping refinements** — snap geometry currently includes all loaded
   entities (hidden layers included) and uses chord-midpoints for bulge arcs;
   per-layer filtering and true arc midpoints are later refinements.
-- **Instanced blocks.** INSERTs are flattened (correct, simple); `InstancedMesh`
-  is a Phase 4 performance optimization.
 ```
