@@ -44,6 +44,7 @@ interface ViewerState {
   setScene: (scene: Scene) => void;
   failLoad: (message: string) => void;
   toggleLayer: (name: string) => void;
+  showAllLayers: () => void;
   setCursor: (cursor: Vec2 | null) => void;
 
   setTool: (tool: MeasureTool | null) => void;
@@ -106,6 +107,11 @@ export const useViewerStore = create<ViewerState>((set) => ({
   toggleLayer: (name) =>
     set((state) => ({
       layers: state.layers.map((l) => (l.name === name ? { ...l, visible: !l.visible } : l)),
+    })),
+
+  showAllLayers: () =>
+    set((state) => ({
+      layers: state.layers.map((l) => (l.visible ? l : { ...l, visible: true })),
     })),
 
   setCursor: (cursor) => set({ cursor }),

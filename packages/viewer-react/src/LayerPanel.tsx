@@ -13,13 +13,31 @@ function swatch(color: RGB): string {
 export function LayerPanel({ onSetLayerVisible }: LayerPanelProps): ReactElement | null {
   const layers = useViewerStore((s) => s.layers);
   const toggleLayer = useViewerStore((s) => s.toggleLayer);
+  const showAllLayers = useViewerStore((s) => s.showAllLayers);
   const warnings = useViewerStore((s) => s.warnings);
 
   if (layers.length === 0) return null;
 
+  const allVisible = layers.every((l) => l.visible);
+
   return (
     <aside className="dxf-layers">
-      <div className="dxf-layers__header">Layers ({layers.length})</div>
+      <div className="dxf-layers__header">
+        <span>Layers ({layers.length})</span>
+        <button
+          type="button"
+          className="dxf-layers__action"
+          disabled={allVisible}
+          onClick={() => {
+            for (const layer of layers) {
+              if (!layer.visible) onSetLayerVisible(layer.name, true);
+            }
+            showAllLayers();
+          }}
+        >
+          Show all
+        </button>
+      </div>
       <ul className="dxf-layers__list">
         {layers.map((layer) => (
           <li key={layer.name} className="dxf-layers__item">
