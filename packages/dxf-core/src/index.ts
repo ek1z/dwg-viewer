@@ -17,6 +17,8 @@ export {
 export type { Decomposed } from './matrix.js';
 export { aciToRGB, unpackRGB, resolveColor } from './color.js';
 export { resolveUnits } from './units.js';
+export { decodeDxf, sniffDxfHeader, resolveDxfEncoding } from './encoding.js';
+export type { DxfHeaderInfo, DxfSource } from './encoding.js';
 export { buildScene } from './adapter.js';
 export { scanLayerDefaults } from './layerDefaults.js';
 export type { LayerDefault } from './layerDefaults.js';
