@@ -22,6 +22,7 @@ import { Text as TroikaText } from 'troika-three-text';
 import { tessellateArc, tessellateEllipse, tessellatePolyline, tessellateSpline } from './tessellate.js';
 import { anchorX, anchorY, CAP_HEIGHT_RATIO, decodeText } from './text.js';
 import { expandDashed } from './dash.js';
+import { patternHatchRuns, solidHatchTriangles, tessellateHatchLoops } from './hatch.js';
 
 export interface ViewerOptions {
   /** Background color (hex). Default dark CAD grey. */
@@ -426,6 +427,27 @@ export class ViewerEngine {
         bk.pointColors.push(r, g, bl);
         break;
       }
+      case 'hatch': {
+        const rings = tessellateHatchLoops(e.loops);
+        if (!rings.length) break;
+        if (e.solid) {
+          // Triangle vertices come out in local space; map each through the
+          // entity transform (and rebasing offset) like every other primitive.
+          const tris = solidHatchTriangles(rings);
+          for (let i = 0; i + 5 < tris.length; i += 6) {
+            const p0 = toWorld({ x: tris[i]!, y: tris[i + 1]! });
+            const p1 = toWorld({ x: tris[i + 2]!, y: tris[i + 3]! });
+            const p2 = toWorld({ x: tris[i + 4]!, y: tris[i + 5]! });
+            bk.triPositions.push(p0.x, p0.y, 0, p1.x, p1.y, 0, p2.x, p2.y, 0);
+            bk.triColors.push(r, g, bl, r, g, bl, r, g, bl);
+          }
+        } else {
+          for (const run of patternHatchRuns(rings, e.pattern, e.double)) {
+            pushRun(run.map(toWorld), false);
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -580,6 +602,19 @@ export class ViewerEngine {
       case 'point': {
         const p = tw(e.position);
         snap.addPoint(p.x, p.y, 'endpoint');
+        break;
+      }
+      case 'hatch': {
+        // Snap to the hatch boundary (its tessellated rings), not the fill lines.
+        for (const ring of tessellateHatchLoops(e.loops)) {
+          const world = ring.map(tw);
+          for (const v of world) snap.addPoint(v.x, v.y, 'endpoint');
+          for (let i = 0; i < world.length; i++) {
+            const a = world[i]!;
+            const b = world[(i + 1) % world.length]!;
+            snap.addSegment(a.x, a.y, b.x, b.y);
+          }
+        }
         break;
       }
       case 'text':
