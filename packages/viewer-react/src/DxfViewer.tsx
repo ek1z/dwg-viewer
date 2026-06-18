@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEvent, ReactElement } from 'react';
-import { parseDxf } from '@dwg-viewer/dxf-core';
+import { decodeDxf, parseDxf } from '@dwg-viewer/dxf-core';
 import { isDwgFile, parseDwg } from '@dwg-viewer/dwg-core';
 import { ViewerEngine } from '@dwg-viewer/viewer-engine';
 import { useViewerStore } from './store.js';
@@ -144,9 +144,11 @@ export function DxfViewer({
       beginLoad(file.name);
       try {
         // DWG is converted to DXF in the browser; both end up as the same Scene.
+        // Read DXF as bytes (not file.text(), which forces UTF-8) so non-UTF-8
+        // code pages declared by $DWGCODEPAGE decode correctly.
         const scene = isDwgFile(file.name)
           ? await parseDwg(await file.arrayBuffer())
-          : parseDxf(await file.text());
+          : parseDxf(decodeDxf(await file.arrayBuffer(), 'dxf'));
         engine.loadScene(scene);
         setScene(scene);
       } catch (err) {

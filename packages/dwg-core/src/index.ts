@@ -1,5 +1,5 @@
 import type { LibreDwg } from '@mlightcad/libredwg-web';
-import { parseDxf, type Scene } from '@dwg-viewer/dxf-core';
+import { decodeDxf, parseDxf, type Scene } from '@dwg-viewer/dxf-core';
 
 /** Resolved libredwg WASM instance (type erased; the import is dynamic). */
 type LibreDwgInstance = Awaited<ReturnType<typeof LibreDwg.create>>;
@@ -35,7 +35,10 @@ export async function parseDwg(data: ArrayBuffer): Promise<Scene> {
   if (!dxf) {
     throw new Error('Failed to read DWG: libredwg could not convert the file.');
   }
-  return parseDxf(new TextDecoder().decode(dxf));
+  // libredwg writes DXF bytes in the drawing's native code page (named by
+  // $DWGCODEPAGE, e.g. ANSI_1252), not UTF-8 — decode accordingly so Nordic and
+  // other non-ASCII text survives.
+  return parseDxf(decodeDxf(dxf, 'dwg'));
 }
 
 /** True when a filename looks like a DWG drawing (case-insensitive). */
