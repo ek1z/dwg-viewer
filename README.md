@@ -139,7 +139,8 @@ remains open without touching anything downstream of the parse step.
 
 LINE, LWPOLYLINE, POLYLINE (with bulges), CIRCLE, ARC, ELLIPSE, SPLINE (NURBS via
 de Boor), POINT, SOLID/3DFACE, INSERT (nested, arrays), DIMENSION (renders its
-anonymous block), TEXT/MTEXT (SDF text via font substitution — see below).
+anonymous block), HATCH (solid fills and line patterns — see below), TEXT/MTEXT
+(SDF text via font substitution — see below).
 
 ### Text rendering (plan §3, Phase 4)
 
@@ -193,11 +194,28 @@ text so the DWG path (DWG → DXF) is covered too, and keeps `dxf-parser` unfork
 block-local units once per definition, so it is approximate when an instance is
 non-uniformly scaled.
 
+### Hatches (plan §3)
+
+HATCH entities render both **solid fills** and **line patterns**. `dxf-parser`
+ships no HATCH handler (it silently drops the entity), so `dxf-core` registers
+its own (`packages/dxf-core/src/hatch.ts`) and normalizes the result to a
+parametric `HatchEntity` — boundary loops stay parametric (polylines with bulges,
+or edge sequences of lines/arcs/ellipses/splines), exactly like every other
+curved entity, and `viewer-engine` owns tessellation.
+
+Boundaries are filled with the **even-odd rule** across all loops (the default
+AutoCAD "normal" style), so nested loops cut islands automatically. Solid fills
+triangulate to a mesh; line patterns expand each pattern-definition line family,
+clip it to the boundary with a scanline pass, and dash it through the same
+machinery as dashed linetypes above. Pathological hatches are bounded by
+per-family and total run caps so a malformed pattern can't exhaust memory.
+
 ## Not yet implemented (deferred)
 
 - **Adaptive tessellation.** Curves use a fixed relative chord tolerance; they will
   facet when zoomed far in. Re-tessellation on zoom is a later refinement.
-- **Paper-space layouts**, **pattern hatches**, **true-color (DXF 420)**
+- **Paper-space layouts**, **gradient hatches** (solid + pattern hatches are
+  supported; gradient fills render as a flat solid), **true-color (DXF 420)**
   entities (fall back to layer color).
 - **Snapping refinements** — snap geometry currently includes all loaded
   entities (hidden layers included) and uses chord-midpoints for bulge arcs;
