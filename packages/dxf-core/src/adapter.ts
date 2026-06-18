@@ -17,7 +17,11 @@ import type {
   Vec2,
   TextHAlign,
   TextVAlign,
+  HatchLoop,
+  HatchEdge,
+  HatchPatternLine,
 } from './types.js';
+import type { RawHatch, RawHatchLoop, RawHatchEdge } from './hatch.js';
 import { IDENTITY, multiply, translation, scaling, rotation, apply } from './matrix.js';
 import { ocsToAffine } from './ocs.js';
 import { aciToRGB, unpackRGB, resolveColor } from './color.js';
@@ -542,9 +546,32 @@ export function buildScene(dxf: IDxf, layerDefaults: Map<string, LayerDefault> =
       case 'MTEXT': {
         return mapText(e, parent, ctx);
       }
+      case 'HATCH': {
+        return mapHatch(e, parent, ctx);
+      }
       default:
         return null;
     }
+  }
+
+  function mapHatch(e: IEntity, parent: Affine, ctx: Ctx): SceneEntity | null {
+    const raw = (e as unknown as { hatch?: RawHatch }).hatch;
+    if (!raw || !raw.loops.length) return null;
+    const ocs = ocsToAffine(toVec3(raw.extrusion));
+    const loops = raw.loops.map(convertHatchLoop).filter((l): l is HatchLoop => l !== null);
+    if (!loops.length) return null;
+    // A pattern hatch with no usable definition lines can't draw lines; treat it
+    // as solid so the region still reads as filled rather than vanishing.
+    const pattern = raw.solid ? [] : raw.patternLines.map(convertHatchPatternLine);
+    const solid = raw.solid || pattern.length === 0;
+    return {
+      type: 'hatch',
+      ...style(e, multiply(parent, ocs), ctx),
+      loops,
+      solid,
+      pattern,
+      double: raw.double,
+    };
   }
 
   function mapText(e: IEntity, parent: Affine, ctx: Ctx): SceneEntity | null {
@@ -647,6 +674,78 @@ function headerNumber(dxf: IDxf, key: string): number | undefined {
   return typeof v === 'number' ? v : undefined;
 }
 
+/** Raw (DXF-flavoured) HATCH boundary loop → normalized scene loop, or null. */
+function convertHatchLoop(raw: RawHatchLoop): HatchLoop | null {
+  if (raw.kind === 'polyline') {
+    if (raw.vertices.length < 2) return null;
+    return {
+      kind: 'polyline',
+      closed: raw.closed,
+      vertices: raw.vertices.map((v) => ({ x: v.x, y: v.y, bulge: v.bulge || undefined })),
+    };
+  }
+  const edges = raw.edges.map(convertHatchEdge).filter((e): e is HatchEdge => e !== null);
+  return edges.length ? { kind: 'edges', edges } : null;
+}
+
+/** Raw boundary edge → scene edge (angles degrees → radians), or null. */
+function convertHatchEdge(raw: RawHatchEdge): HatchEdge | null {
+  switch (raw.type) {
+    case 'line':
+      return { type: 'line', a: { x: raw.x1, y: raw.y1 }, b: { x: raw.x2, y: raw.y2 } };
+    case 'arc':
+      return {
+        type: 'arc',
+        center: { x: raw.cx, y: raw.cy },
+        radius: raw.radius,
+        startAngle: raw.startAngle * DEG,
+        endAngle: raw.endAngle * DEG,
+        ccw: raw.ccw,
+      };
+    case 'ellipse':
+      return {
+        type: 'ellipse',
+        center: { x: raw.cx, y: raw.cy },
+        majorAxis: { x: raw.majorX, y: raw.majorY },
+        axisRatio: raw.axisRatio,
+        startAngle: raw.startAngle * DEG,
+        endAngle: raw.endAngle * DEG,
+        ccw: raw.ccw,
+      };
+    case 'spline':
+      if (raw.controlPoints.length < 2) return null;
+      return {
+        type: 'spline',
+        degree: raw.degree,
+        controlPoints: raw.controlPoints.map((p) => ({ x: p.x, y: p.y })),
+        knots: raw.knots,
+        closed: raw.closed,
+      };
+  }
+}
+
+/**
+ * Raw pattern definition line → scene pattern family. DXF stores the offset in
+ * the line's own frame (delta-x along, delta-y across), so delta-y is exactly
+ * the perpendicular spacing and delta-x the per-line shift along the direction.
+ */
+function convertHatchPatternLine(raw: {
+  angle: number;
+  baseX: number;
+  baseY: number;
+  deltaX: number;
+  deltaY: number;
+  dashes: number[];
+}): HatchPatternLine {
+  return {
+    angle: raw.angle * DEG,
+    base: { x: raw.baseX, y: raw.baseY },
+    spacing: raw.deltaY,
+    along: raw.deltaX,
+    dashes: raw.dashes,
+  };
+}
+
 /**
  * World-space bounding box. Curves are approximated by their defining points
  * (centers ± radius for arcs); good enough to frame the initial view, the
@@ -718,6 +817,29 @@ function computeBounds(
         break;
       case 'text':
         add(apply(e.transform, e.position));
+        break;
+      case 'hatch':
+        for (const loop of e.loops) {
+          if (loop.kind === 'polyline') {
+            for (const v of loop.vertices) add(apply(e.transform, v));
+          } else {
+            for (const edge of loop.edges) {
+              if (edge.type === 'line') {
+                add(apply(e.transform, edge.a));
+                add(apply(e.transform, edge.b));
+              } else if (edge.type === 'arc') {
+                add(apply(e.transform, { x: edge.center.x - edge.radius, y: edge.center.y - edge.radius }));
+                add(apply(e.transform, { x: edge.center.x + edge.radius, y: edge.center.y + edge.radius }));
+              } else if (edge.type === 'ellipse') {
+                const r = Math.hypot(edge.majorAxis.x, edge.majorAxis.y);
+                add(apply(e.transform, { x: edge.center.x - r, y: edge.center.y - r }));
+                add(apply(e.transform, { x: edge.center.x + r, y: edge.center.y + r }));
+              } else {
+                for (const p of edge.controlPoints) add(apply(e.transform, p));
+              }
+            }
+          }
+        }
         break;
     }
   }

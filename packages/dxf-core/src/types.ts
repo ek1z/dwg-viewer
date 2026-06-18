@@ -128,6 +128,78 @@ export interface SolidEntity extends EntityStyle {
   points: ReadonlyArray<Vec2>;
 }
 
+/**
+ * One edge of a non-polyline HATCH boundary loop. Angles are radians (CCW);
+ * `ccw` records whether the original arc/ellipse swept counter-clockwise, so the
+ * engine can reverse the tessellated points to keep the loop's traversal order.
+ */
+export type HatchEdge =
+  | { type: 'line'; a: Vec2; b: Vec2 }
+  | {
+      type: 'arc';
+      center: Vec2;
+      radius: number;
+      startAngle: number;
+      endAngle: number;
+      ccw: boolean;
+    }
+  | {
+      type: 'ellipse';
+      center: Vec2;
+      majorAxis: Vec2;
+      axisRatio: number;
+      startAngle: number;
+      endAngle: number;
+      ccw: boolean;
+    }
+  | {
+      type: 'spline';
+      degree: number;
+      controlPoints: ReadonlyArray<Vec2>;
+      knots: ReadonlyArray<number>;
+      closed: boolean;
+    };
+
+/**
+ * A single HATCH boundary loop, either a polyline (with optional bulges) or a
+ * sequence of parametric edges. Loops stay parametric here; `viewer-engine`
+ * tessellates them into closed rings (mirroring every other curved entity).
+ */
+export type HatchLoop =
+  | { kind: 'polyline'; vertices: ReadonlyArray<Vec2 & { bulge?: number }>; closed: boolean }
+  | { kind: 'edges'; edges: ReadonlyArray<HatchEdge> };
+
+/**
+ * One family of parallel hatch lines (a pattern definition line). The family
+ * contains every line `base + n·(along·û + spacing·v̂)` for integer `n`, running
+ * in direction `angle`. `spacing` is the perpendicular distance between lines
+ * (DXF delta-y); `along` only shifts the dash phase along each line.
+ */
+export interface HatchPatternLine {
+  /** Line direction, radians (CCW). */
+  angle: number;
+  /** Local-space point that the n = 0 line passes through. */
+  base: Vec2;
+  /** Perpendicular spacing between successive lines (local units; may be negative). */
+  spacing: number;
+  /** Shift along the line direction between successive lines (local units). */
+  along: number;
+  /** Dash pattern (local units): + dash, − gap, 0 dot; empty = solid. */
+  dashes: ReadonlyArray<number>;
+}
+
+export interface HatchEntity extends EntityStyle {
+  type: 'hatch';
+  /** Boundary loops (parametric). Filled with the even-odd rule across all loops. */
+  loops: ReadonlyArray<HatchLoop>;
+  /** True for a solid/gradient fill; false for a line pattern. */
+  solid: boolean;
+  /** Pattern definition lines (empty when `solid`). */
+  pattern: ReadonlyArray<HatchPatternLine>;
+  /** AutoCAD "double" flag: also draw each pattern family rotated 90°. */
+  double: boolean;
+}
+
 export type TextHAlign = 'left' | 'center' | 'right';
 export type TextVAlign = 'baseline' | 'bottom' | 'middle' | 'top';
 
@@ -175,6 +247,7 @@ export type SceneEntity =
   | PointEntity
   | SolidEntity
   | TextEntity
+  | HatchEntity
   | InstanceEntity;
 
 /**
