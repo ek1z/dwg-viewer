@@ -42,6 +42,15 @@ interface ViewerState {
   /** Completed measurements. */
   measurements: Measurement[];
 
+  /** Whether the print-region tool is active (mutually exclusive with `tool`). */
+  printMode: boolean;
+  /** Corner(s) placed while drawing the print region (true world coords). */
+  printCorners: Vec2[];
+  /** Live cursor while drawing the region (drives the rubber-band rectangle). */
+  printHover: Vec2 | null;
+  /** Committed print region (true world coords), or null. */
+  printRegion: { min: Vec2; max: Vec2 } | null;
+
   beginLoad: (fileName: string) => void;
   setScene: (scene: Scene) => void;
   failLoad: (message: string) => void;
@@ -56,6 +65,11 @@ interface ViewerState {
   finishDraft: () => void;
   cancelDraft: () => void;
   clearMeasurements: () => void;
+
+  setPrintMode: (on: boolean) => void;
+  addPrintCorner: (point: Vec2) => void;
+  setPrintHover: (point: Vec2 | null) => void;
+  clearPrintRegion: () => void;
 }
 
 let nextMeasurementId = 1;
@@ -77,6 +91,11 @@ export const useViewerStore = create<ViewerState>((set) => ({
   snap: null,
   measurements: [],
 
+  printMode: false,
+  printCorners: [],
+  printHover: null,
+  printRegion: null,
+
   beginLoad: (fileName) =>
     set({
       status: 'loading',
@@ -88,6 +107,10 @@ export const useViewerStore = create<ViewerState>((set) => ({
       hover: null,
       snap: null,
       measurements: [],
+      printMode: false,
+      printCorners: [],
+      printHover: null,
+      printRegion: null,
     }),
 
   setScene: (scene) =>
@@ -129,6 +152,11 @@ export const useViewerStore = create<ViewerState>((set) => ({
       draftPoints: [],
       hover: null,
       snap: null,
+      // Measure tools and the print-region tool are mutually exclusive.
+      printMode: false,
+      printCorners: [],
+      printHover: null,
+      printRegion: null,
     })),
 
   setHover: (hover, snap) => set({ hover, snap }),
@@ -169,4 +197,39 @@ export const useViewerStore = create<ViewerState>((set) => ({
   cancelDraft: () => set({ draftPoints: [], hover: null, snap: null }),
 
   clearMeasurements: () => set({ measurements: [], draftPoints: [], hover: null, snap: null }),
+
+  setPrintMode: (on) =>
+    set({
+      printMode: on,
+      printCorners: [],
+      printHover: null,
+      printRegion: null,
+      // Entering print mode deactivates any measure tool (mutually exclusive).
+      ...(on ? { tool: null, draftPoints: [], hover: null, snap: null } : {}),
+    }),
+
+  addPrintCorner: (point) =>
+    set((state) => {
+      if (!state.printMode) return {};
+      const first = state.printCorners[0];
+      // No corner yet, or a region was already committed → begin a fresh region.
+      if (!first || state.printRegion) {
+        return { printRegion: null, printCorners: [point] };
+      }
+      // Ignore a degenerate second corner (e.g. an accidental double-click).
+      if (first.x === point.x && first.y === point.y) return {};
+      return {
+        printRegion: {
+          min: { x: Math.min(first.x, point.x), y: Math.min(first.y, point.y) },
+          max: { x: Math.max(first.x, point.x), y: Math.max(first.y, point.y) },
+        },
+        printCorners: [],
+        printHover: null,
+      };
+    }),
+
+  setPrintHover: (point) => set({ printHover: point }),
+
+  clearPrintRegion: () =>
+    set({ printMode: false, printCorners: [], printHover: null, printRegion: null }),
 }));

@@ -237,6 +237,68 @@
   stroke-linejoin: round;
 }
 
+/* Print-region rubber band (reuses the .dxf-measure SVG layer). */
+.dxf-print__rect {
+  fill: rgba(122, 167, 255, 0.1);
+  stroke: #7aa7ff;
+  stroke-width: 1.5;
+}
+.dxf-print__rect--preview {
+  fill: rgba(122, 167, 255, 0.06);
+  stroke-dasharray: 5 4;
+}
+
+.dxf-print-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(32, 32, 32, 0.96);
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.dxf-print-panel__title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9a9a9a;
+}
+.dxf-print-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dxf-print-panel__row--check {
+  justify-content: flex-start;
+  cursor: pointer;
+}
+.dxf-print-panel__value {
+  color: #c8c8c8;
+  text-transform: capitalize;
+  font-variant-numeric: tabular-nums;
+}
+.dxf-print-panel select {
+  background: #3a3a3a;
+  color: #e6e6e6;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.dxf-print-panel__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 .dxf-viewer__stage--measuring {
   cursor: crosshair;
 }
