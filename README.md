@@ -87,6 +87,18 @@ the drawing; an SVG overlay draws the annotation and the live value:
   double-click or **Enter** finishes, **Esc** cancels. Measured values use the
   drawing's `$INSUNITS`, so distances read in real units.
 
+### Printing a region
+
+Pick **Print** in the toolbar, then click two opposite corners to mark a
+rectangular area (a rubber-band rectangle previews while you drag toward the
+cursor; **Esc** cancels). A small panel lets you choose the paper size (A4 / A3 /
+Letter) and a white or dark page background; orientation follows the region's
+aspect and an approximate scale (`≈ 1:100`, shown when the drawing has real
+units) is computed for the fit-to-page output. **Print / Save as PDF** rasterizes
+just that region — through a dedicated off-screen renderer, so the live view is
+untouched — and opens the browser's print dialog, where "Save as PDF" is the
+standard destination. Everything stays on-device.
+
 ### Block instancing (plan §5 — performance)
 
 Drawings often place the same block (a symbol, fixture, tree, title-block detail)

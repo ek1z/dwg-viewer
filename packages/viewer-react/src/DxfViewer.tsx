@@ -7,6 +7,8 @@ import { useViewerStore } from './store.js';
 import { LayerPanel } from './LayerPanel.js';
 import { Toolbar } from './Toolbar.js';
 import { MeasureOverlay } from './MeasureOverlay.js';
+import { PrintRegionOverlay } from './PrintRegionOverlay.js';
+import { PrintPanel } from './PrintPanel.js';
 import { toolHint } from './measureLabel.js';
 import './styles.css';
 
@@ -45,6 +47,8 @@ export function DxfViewer({
   const failLoad = useViewerStore((s) => s.failLoad);
   const status = useViewerStore((s) => s.status);
   const tool = useViewerStore((s) => s.tool);
+  const printMode = useViewerStore((s) => s.printMode);
+  const printRegion = useViewerStore((s) => s.printRegion);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -69,26 +73,37 @@ export function DxfViewer({
       return { world: snap ? snap.point : raw, snap };
     };
 
+    const rawWorld = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      return engine.screenToWorld(clientX - rect.left, clientY - rect.top);
+    };
+
     const onMove = (ev: PointerEvent) => {
       const store = useViewerStore.getState();
       if (store.tool) {
         const { world, snap } = snapAt(ev.clientX, ev.clientY);
         store.setHover(world, snap);
         store.setCursor(world);
+      } else if (store.printMode) {
+        // Region selection works on raw world coordinates (no object snapping).
+        const world = rawWorld(ev.clientX, ev.clientY);
+        store.setPrintHover(world);
+        store.setCursor(world);
       } else {
-        const rect = canvas.getBoundingClientRect();
-        store.setCursor(engine.screenToWorld(ev.clientX - rect.left, ev.clientY - rect.top));
+        store.setCursor(rawWorld(ev.clientX, ev.clientY));
       }
     };
     const onLeave = () => {
       const store = useViewerStore.getState();
       store.setCursor(null);
       store.setHover(null, null);
+      store.setPrintHover(null);
     };
     const onClick = (ev: MouseEvent) => {
       const store = useViewerStore.getState();
-      if (!store.tool || ev.button !== 0) return;
-      store.addDraftPoint(snapAt(ev.clientX, ev.clientY).world);
+      if (ev.button !== 0) return;
+      if (store.tool) store.addDraftPoint(snapAt(ev.clientX, ev.clientY).world);
+      else if (store.printMode) store.addPrintCorner(rawWorld(ev.clientX, ev.clientY));
     };
     const onDblClick = (ev: MouseEvent) => {
       const store = useViewerStore.getState();
@@ -120,15 +135,19 @@ export function DxfViewer({
     engineRef.current?.setLineweightDisplay(lineweightDisplay);
   }, [lineweightDisplay]);
 
-  // Reserve the left button for point placement while a measure tool is active.
+  // Reserve the left button for point placement while a measure or print tool is active.
   useEffect(() => {
-    engineRef.current?.setPanWithLeftButton(tool === null);
-  }, [tool]);
+    engineRef.current?.setPanWithLeftButton(tool === null && !printMode);
+  }, [tool, printMode]);
 
-  // Enter finishes the in-progress measurement; Escape cancels it.
+  // Enter finishes the in-progress measurement; Escape cancels the active tool.
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const store = useViewerStore.getState();
+      if (store.printMode) {
+        if (ev.key === 'Escape') store.clearPrintRegion();
+        return;
+      }
       if (!store.tool) return;
       if (ev.key === 'Enter') store.finishDraft();
       else if (ev.key === 'Escape') store.cancelDraft();
@@ -180,7 +199,7 @@ export function DxfViewer({
         <LayerPanel onSetLayerVisible={onSetLayerVisible} />
         <div
           className={`dxf-viewer__stage${dragOver ? ' dxf-viewer__stage--dragover' : ''}${
-            tool ? ' dxf-viewer__stage--measuring' : ''
+            tool || printMode ? ' dxf-viewer__stage--measuring' : ''
           }`}
           onDragOver={(e) => {
             e.preventDefault();
@@ -191,12 +210,20 @@ export function DxfViewer({
         >
           <canvas ref={canvasRef} className="dxf-viewer__canvas" />
           <MeasureOverlay engineRef={engineRef} frame={frame} />
+          <PrintRegionOverlay engineRef={engineRef} frame={frame} />
+          {status === 'ready' && printRegion && <PrintPanel engineRef={engineRef} />}
           {status === 'idle' && (
             <div className="dxf-viewer__hint">Open or drop a .dxf or .dwg file to begin</div>
           )}
           {status === 'loading' && <div className="dxf-viewer__hint">Parsing…</div>}
           {status === 'ready' && tool && (
             <div className="dxf-viewer__measure-hint">{toolHint(tool)}</div>
+          )}
+          {status === 'ready' && printMode && !printRegion && (
+            <div className="dxf-viewer__measure-hint">
+              Click two opposite corners to mark the area to print · Esc to cancel · middle-drag to
+              pan
+            </div>
           )}
         </div>
       </div>

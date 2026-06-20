@@ -35,6 +35,8 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const lineweightDisplay = useViewerStore((s) => s.lineweightDisplay);
   const setLineweightDisplay = useViewerStore((s) => s.setLineweightDisplay);
+  const printMode = useViewerStore((s) => s.printMode);
+  const setPrintMode = useViewerStore((s) => s.setPrintMode);
 
   const ready = status === 'ready';
   const liveValue =
@@ -92,6 +94,16 @@ export function Toolbar({ onOpenFile, onFit }: ToolbarProps): ReactElement {
         title="Show lineweights"
       >
         Lineweights
+      </button>
+      <button
+        type="button"
+        className={`dxf-toolbar__btn${printMode ? ' dxf-toolbar__btn--active' : ''}`}
+        onClick={() => setPrintMode(!printMode)}
+        disabled={!ready}
+        aria-pressed={printMode}
+        title="Print or save a region as PDF"
+      >
+        Print
       </button>
 
       <input

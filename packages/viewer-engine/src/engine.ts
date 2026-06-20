@@ -118,6 +118,14 @@ export class ViewerEngine {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
+  /** Live-view background color (hex), retained so region capture can restore it. */
+  private readonly background: number;
+  /**
+   * Dedicated renderer for region capture, created lazily on first print. It
+   * uses `preserveDrawingBuffer` so `toDataURL` is reliable across browsers; the
+   * main renderer omits that flag to keep compositing fast. Shares `this.scene`.
+   */
+  private captureRenderer: THREE.WebGLRenderer | null = null;
   private readonly lineWidth: number;
   private readonly lineweightScale: number;
   /** When false, every line draws at `lineWidth` regardless of its lineweight (AutoCAD LWDISPLAY off). */
@@ -159,8 +167,9 @@ export class ViewerEngine {
     this.lineWidth = options.lineWidth ?? DEFAULT_LINE_WIDTH;
     this.lineweightScale = options.lineweightScale ?? DEFAULT_LINEWEIGHT_SCALE;
     this.fontUrl = options.fontUrl;
+    this.background = options.background ?? DEFAULT_BG;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setClearColor(options.background ?? DEFAULT_BG, 1);
+    this.renderer.setClearColor(this.background, 1);
     this.camera.position.z = 10;
     this.attachControls();
     this.resize();
@@ -672,6 +681,58 @@ export class ViewerEngine {
   }
 
   /**
+   * Rasterize a rectangular world region to a PNG data URL, independent of the
+   * live view. Renders through a dedicated `preserveDrawingBuffer` renderer (so
+   * `toDataURL` is reliable across browsers) with a throwaway camera framed to
+   * the region — the live camera, canvas size and pixel ratio are never touched.
+   * The output preserves the region's aspect ratio; `maxPx` bounds its longest
+   * side. Coordinates are true world float64 (rebased internally like everything
+   * else).
+   */
+  captureRegion(
+    worldMin: Vec2,
+    worldMax: Vec2,
+    opts: { maxPx: number; background: number },
+  ): string {
+    const worldW = Math.max(worldMax.x - worldMin.x, 1e-9);
+    const worldH = Math.max(worldMax.y - worldMin.y, 1e-9);
+    const aspect = worldW / worldH;
+    const maxPx = Math.max(1, Math.floor(opts.maxPx));
+    const pxW = aspect >= 1 ? maxPx : Math.max(1, Math.round(maxPx * aspect));
+    const pxH = aspect >= 1 ? Math.max(1, Math.round(maxPx / aspect)) : maxPx;
+
+    const renderer = (this.captureRenderer ??= new THREE.WebGLRenderer({
+      canvas: document.createElement('canvas'),
+      antialias: false,
+      preserveDrawingBuffer: true,
+    }));
+    renderer.setPixelRatio(1);
+    renderer.setSize(pxW, pxH, false);
+    renderer.setClearColor(opts.background, 1);
+
+    // Frame the region in local (rebased) space so the live camera is untouched.
+    const cam = new THREE.OrthographicCamera(
+      worldMin.x - this.offset.x,
+      worldMax.x - this.offset.x,
+      worldMax.y - this.offset.y,
+      worldMin.y - this.offset.y,
+      -1000,
+      1000,
+    );
+    cam.position.z = 10;
+    cam.updateProjectionMatrix();
+
+    // Fat lines size against the resolution uniform; point it at the capture
+    // buffer for the render, then restore it to the live canvas size.
+    for (const { material } of this.lineMaterials) material.resolution.set(pxW, pxH);
+    renderer.render(this.scene, cam);
+    const url = renderer.domElement.toDataURL('image/png');
+    this.updateMaterialResolution();
+
+    return url;
+  }
+
+  /**
    * Best object snap near a true world-space point, or null. `pixelRadius` is
    * the screen-space tolerance; it is converted to world units via the current
    * zoom so the catch radius stays constant on screen. Runs on the float64 snap
@@ -850,5 +911,7 @@ export class ViewerEngine {
     for (const d of this.disposers) d();
     this.disposers.length = 0;
     this.renderer.dispose();
+    this.captureRenderer?.dispose();
+    this.captureRenderer = null;
   }
 }
