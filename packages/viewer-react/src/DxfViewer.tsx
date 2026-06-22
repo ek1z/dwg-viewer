@@ -28,8 +28,14 @@ export interface DxfViewerProps {
 /** Screen-space snap tolerance (CSS pixels) — kept constant on screen via zoom. */
 const SNAP_PIXELS = 12;
 
-/** Self-hosted substitution font shipped in `apps/web/public/fonts`. */
-const DEFAULT_FONT_URL = '/fonts/LiberationSans-Regular.ttf';
+/**
+ * Self-hosted substitution font shipped in `apps/web/public/fonts`.
+ *
+ * Resolved against the app's configured base path (`import.meta.env.BASE_URL`,
+ * injected by Vite) so the request URL matches when the app is served from a
+ * subpath — e.g. GitHub Pages at `/dwg-viewer/` — instead of the site root.
+ */
+const DEFAULT_FONT_URL = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/fonts/LiberationSans-Regular.ttf`;
 
 export function DxfViewer({
   background,
