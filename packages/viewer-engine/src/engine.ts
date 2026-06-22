@@ -118,8 +118,6 @@ export class ViewerEngine {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -1000, 1000);
-  /** Live-view background color (hex), retained so region capture can restore it. */
-  private readonly background: number;
   /**
    * Dedicated renderer for region capture, created lazily on first print. It
    * uses `preserveDrawingBuffer` so `toDataURL` is reliable across browsers; the
@@ -167,9 +165,8 @@ export class ViewerEngine {
     this.lineWidth = options.lineWidth ?? DEFAULT_LINE_WIDTH;
     this.lineweightScale = options.lineweightScale ?? DEFAULT_LINEWEIGHT_SCALE;
     this.fontUrl = options.fontUrl;
-    this.background = options.background ?? DEFAULT_BG;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setClearColor(this.background, 1);
+    this.renderer.setClearColor(options.background ?? DEFAULT_BG, 1);
     this.camera.position.z = 10;
     this.attachControls();
     this.resize();
@@ -723,13 +720,15 @@ export class ViewerEngine {
     cam.updateProjectionMatrix();
 
     // Fat lines size against the resolution uniform; point it at the capture
-    // buffer for the render, then restore it to the live canvas size.
+    // buffer for the render, then always restore it to the live canvas size
+    // (even if the render throws) so live line widths aren't left mis-sized.
     for (const { material } of this.lineMaterials) material.resolution.set(pxW, pxH);
-    renderer.render(this.scene, cam);
-    const url = renderer.domElement.toDataURL('image/png');
-    this.updateMaterialResolution();
-
-    return url;
+    try {
+      renderer.render(this.scene, cam);
+      return renderer.domElement.toDataURL('image/png');
+    } finally {
+      this.updateMaterialResolution();
+    }
   }
 
   /**
