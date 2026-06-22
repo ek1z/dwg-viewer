@@ -144,8 +144,14 @@ export function DxfViewer({
   useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       const store = useViewerStore.getState();
+      // Don't hijack keys typed into the print panel's own form controls.
+      const target = ev.target as HTMLElement | null;
+      const inForm =
+        target?.tagName === 'SELECT' ||
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA';
       if (store.printMode) {
-        if (ev.key === 'Escape') store.clearPrintRegion();
+        if (ev.key === 'Escape' && !inForm) store.clearPrintRegion();
         return;
       }
       if (!store.tool) return;
