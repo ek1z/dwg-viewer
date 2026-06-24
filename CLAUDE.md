@@ -78,3 +78,21 @@ Scope work to a single package when you can:
   wired before editing. `> use the explorer to map how content feeds the viewer`
 - **reviewer** (`.claude/agents/reviewer.md`) — after coding, review the diff
   against the spec and run the gates. `> use the reviewer to check the diff`
+
+## PR descriptions
+
+Write PR bodies with this structure (markdown), not a copy of the commit message:
+
+- **What & why** — a short paragraph: what changed and the reason/context.
+- **Changes** — a table (`File | Change`) of the files touched and the concrete
+  edit in each; call out anything intentionally left unchanged and why.
+- **Breaking changes that don't apply** — when relevant (e.g. a dep major bump),
+  list the breaking changes that were considered but don't affect this repo.
+- **Verification** — bullet each gate with a status marker: ✅ done/passing,
+  ⚠️ caveat or known gap (state it honestly, e.g. a pre-existing issue),
+  ⏭️ not run and why. Cover build, tests, typecheck; note anything not exercised.
+- Add short notes for non-obvious warnings or follow-ups.
+
+Keep the git trailers (`Co-Authored-By`, `Claude-Session`) out of the PR body —
+they belong only in the commit message. End the body with the
+"🤖 Generated with Claude Code" footer.
